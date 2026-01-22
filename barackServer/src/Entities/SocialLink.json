@@ -1,0 +1,26 @@
+{
+    "name": "SocialLink",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Platform name"
+      },
+      "url": {
+        "type": "string",
+        "description": "Link URL"
+      },
+      "icon": {
+        "type": "string",
+        "description": "Icon identifier"
+      },
+      "order": {
+        "type": "number",
+        "default": 0
+      }
+    },
+    "required": [
+      "name",
+      "url"
+    ]
+  }

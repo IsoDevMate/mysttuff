@@ -1,0 +1,41 @@
+{
+    "name": "BlogPost",
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Post title"
+      },
+      "slug": {
+        "type": "string",
+        "description": "URL-friendly identifier"
+      },
+      "content": {
+        "type": "string",
+        "description": "Post content in markdown"
+      },
+      "excerpt": {
+        "type": "string",
+        "description": "Short preview of the post"
+      },
+      "category": {
+        "type": "string",
+        "enum": [
+          "backend",
+          "ai",
+          "databases",
+          "experiments",
+          "other"
+        ],
+        "description": "Post category"
+      },
+      "published": {
+        "type": "boolean",
+        "default": true
+      }
+    },
+    "required": [
+      "title",
+      "content"
+    ]
+  }

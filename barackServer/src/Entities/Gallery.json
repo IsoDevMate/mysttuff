@@ -1,0 +1,43 @@
+{
+    "name": "Gallery",
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Title or caption"
+      },
+      "description": {
+        "type": "string",
+        "description": "Description or context"
+      },
+      "type": {
+        "type": "string",
+        "enum": [
+          "photo",
+          "podcast",
+          "event",
+          "design",
+          "channel",
+          "other"
+        ],
+        "description": "Type of content"
+      },
+      "image_url": {
+        "type": "string",
+        "description": "Image or thumbnail URL"
+      },
+      "link": {
+        "type": "string",
+        "description": "External link if applicable"
+      },
+      "date": {
+        "type": "string",
+        "format": "date",
+        "description": "When it happened/was created"
+      }
+    },
+    "required": [
+      "title",
+      "type"
+    ]
+  }

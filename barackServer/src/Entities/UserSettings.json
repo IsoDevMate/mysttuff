@@ -1,0 +1,37 @@
+{
+    "name": "UserSettings",
+    "type": "object",
+    "properties": {
+      "theme": {
+        "type": "string",
+        "enum": [
+          "light",
+          "dark"
+        ],
+        "default": "light"
+      },
+      "color_palette": {
+        "type": "string",
+        "enum": [
+          "warm",
+          "cool",
+          "minimal",
+          "vibrant"
+        ],
+        "default": "warm"
+      },
+      "font_family": {
+        "type": "string",
+        "enum": [
+          "playfair",
+          "serif",
+          "mono",
+          "handwriting",
+          "modern",
+          "classic"
+        ],
+        "default": "playfair"
+      }
+    },
+    "required": []
+  }
