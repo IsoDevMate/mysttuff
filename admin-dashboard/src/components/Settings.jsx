@@ -1,0 +1,38 @@
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+
+const pageVariants = {
+    initial: { opacity: 0, y: 20 },
+    in: { opacity: 1, y: 0 },
+    out: { opacity: 0, y: -20 }
+};
+
+const pageTransition = {
+    type: "tween",
+    ease: "anticipate",
+    duration: 0.3
+};
+
+function Settings() {
+    return (
+        <motion.div
+            initial="initial"
+            animate="in"
+            exit="out"
+            variants={pageVariants}
+            transition={pageTransition}
+        >
+            <Card>
+                <CardHeader>
+                    <CardTitle>Settings</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p className="text-muted-foreground">Settings panel coming soon...</p>
+                </CardContent>
+            </Card>
+        </motion.div>
+    );
+}
+
+export default Settings;
