@@ -1,5 +1,5 @@
 import React from "react";
-import { base44 } from "@/api/mockData";
+import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
 import { 
   Twitter, 
@@ -26,7 +26,7 @@ const iconMap = {
 export default function Links() {
   const { data: links = [], isLoading } = useQuery({
     queryKey: ['links'],
-    queryFn: () => base44.entities.SocialLink.list('order'),
+    queryFn: () => blogAPI.getSocialLinks(),
   });
 
   const getIcon = (iconName) => {

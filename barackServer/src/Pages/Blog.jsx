@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
-import { base44 } from "@/api/mockData";
+import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ export default function Blog() {
 
   const { data: posts = [], isLoading } = useQuery({
     queryKey: ['posts'],
-    queryFn: () => base44.entities.BlogPost.filter({ published: true }, '-created_date'),
+    queryFn: () => blogAPI.getArticles(),
   });
 
   const filteredPosts = posts
@@ -90,7 +90,7 @@ export default function Blog() {
           {filteredPosts.map((post) => (
             <Link 
               key={post.id}
-              to={createPageUrl(`BlogPost?id=${post.id}`)}
+              to={createPageUrl(`BlogPost?slug=${post.slug}`)}
               className="block group"
             >
               <article className="border-b border-stone-200 pb-10 transition-all hover:border-stone-400">
@@ -101,7 +101,7 @@ export default function Blog() {
                     </span>
                   )}
                   <span className="font-body text-xs text-stone-400">
-                    {format(new Date(post.created_date), 'MMMM d, yyyy')}
+                    {format(new Date(post.created_at), 'MMMM d, yyyy')}
                   </span>
                 </div>
                 <h2 className="font-serif-display text-3xl font-bold text-stone-900 group-hover:text-stone-600 transition-colors mb-3">

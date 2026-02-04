@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
-import { base44 } from "@/api/mockData";
+import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Clock } from "lucide-react";
 import { format } from "date-fns";
@@ -13,20 +13,17 @@ import RelatedPosts from "@/components/blog/RelatedPosts";
 
 export default function BlogPost() {
   const urlParams = new URLSearchParams(window.location.search);
-  const postId = urlParams.get('id');
+  const slug = urlParams.get('slug');
 
   const { data: post, isLoading } = useQuery({
-    queryKey: ['post', postId],
-    queryFn: async () => {
-      const posts = await base44.entities.BlogPost.filter({ id: postId });
-      return posts[0];
-    },
-    enabled: !!postId,
+    queryKey: ['post', slug],
+    queryFn: () => blogAPI.getArticle(slug),
+    enabled: !!slug,
   });
 
   const { data: socials = [] } = useQuery({
     queryKey: ['socials-sidebar'],
-    queryFn: () => base44.entities.SocialLink.list('order', 5),
+    queryFn: () => blogAPI.getSocialLinks(),
   });
 
   if (isLoading) {
@@ -85,7 +82,7 @@ export default function BlogPost() {
               )}
               <span className="font-body text-xs opacity-40 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {format(new Date(post.created_date), 'MMMM d, yyyy')}
+                {format(new Date(post.created_at), 'MMMM d, yyyy')}
               </span>
             </div>
             <h1 className="font-serif-display text-4xl md:text-5xl font-bold leading-tight mb-6">
@@ -170,6 +167,13 @@ export default function BlogPost() {
                 ),
                 em: ({ children }) => (
                   <em className="italic">{children}</em>
+                ),
+                img: ({ src, alt }) => (
+                  <img 
+                    src={src} 
+                    alt={alt} 
+                    className="w-full rounded-lg my-8"
+                  />
                 ),
               }}
             >

@@ -1,16 +1,18 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
-import { base44 } from "@/api/mockData";
+import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { format } from "date-fns";
 
 export default function Home() {
-  const { data: posts = [] } = useQuery({
+  const { data: allPosts = [] } = useQuery({
     queryKey: ['posts-home'],
-    queryFn: () => base44.entities.BlogPost.filter({ published: true }, '-created_date', 3),
+    queryFn: () => blogAPI.getArticles(),
   });
+
+  const posts = allPosts.slice(0, 3);
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-16">
@@ -48,7 +50,7 @@ export default function Home() {
             {posts.map((post) => (
               <Link 
                 key={post.id}
-                to={createPageUrl(`BlogPost?id=${post.id}`)}
+                to={createPageUrl(`BlogPost?slug=${post.slug}`)}
                 className="block group"
               >
                 <article className="border-b border-stone-200 pb-8 transition-all hover:border-stone-400">
@@ -59,7 +61,7 @@ export default function Home() {
                       </span>
                     )}
                     <span className="font-body text-xs text-stone-400">
-                      {format(new Date(post.created_date), 'MMM d, yyyy')}
+                      {format(new Date(post.created_at), 'MMM d, yyyy')}
                     </span>
                   </div>
                   <h3 className="font-serif-display text-2xl font-bold text-stone-900 group-hover:text-stone-600 transition-colors mb-2">

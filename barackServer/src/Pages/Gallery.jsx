@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/mockData";
+import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ExternalLink, Calendar } from "lucide-react";
@@ -21,7 +21,7 @@ export default function Gallery() {
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['gallery'],
-    queryFn: () => base44.entities.Gallery.list('-created_date'),
+    queryFn: () => blogAPI.getGallery(),
   });
 
   const filteredItems = activeType === "all" 
@@ -94,18 +94,6 @@ export default function Gallery() {
                       {typeLabels[item.type]?.[0] || "?"}
                     </span>
                   </div>
-                )}
-                
-                {item.link && (
-                  <a
-                    href={item.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="absolute top-3 right-3 bg-current/80 backdrop-blur-sm text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
                 )}
               </div>
               
