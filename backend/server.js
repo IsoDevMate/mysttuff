@@ -1,12 +1,43 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcrypt';
 import cron from 'node-cron';
+import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 import db from './database.js';
 import { uploadFile, deleteFile } from './storage.js';
 import { authenticateToken, generateToken } from './auth.js';
+
+// Connection checks
+async function checkConnections() {
+  try {
+    await db.execute('SELECT 1');
+    console.log('✓ Database connected');
+  } catch (error) {
+    console.error('✗ Database connection failed:', error.message);
+    process.exit(1);
+  }
+
+  try {
+    const r2 = new S3Client({
+      region: 'auto',
+      endpoint: process.env.R2_ENDPOINT,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+      },
+    });
+    await r2.send(new HeadBucketCommand({ Bucket: process.env.R2_BUCKET_NAME }));
+    console.log('✓ R2 bucket connected');
+  } catch (error) {
+    console.error('✗ R2 bucket connection failed:', error.message);
+    process.exit(1);
+  }
+}
+
+await checkConnections();
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
