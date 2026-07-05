@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Clock } from "lucide-react";
 import { format } from "date-fns";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import CommentSection from "@/components/blog/CommentSection";
 import LikeButton from "@/components/blog/LikeButton";
 import ShareButtons from "@/components/blog/ShareButtons";
@@ -101,6 +102,7 @@ export default function BlogPost() {
           {/* Content */}
           <article className="font-body leading-relaxed prose-styles">
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
                 h1: ({ children }) => (
                   <h1 className="font-serif-display text-3xl font-bold mt-12 mb-4">
@@ -116,6 +118,11 @@ export default function BlogPost() {
                   <h3 className="font-serif-display text-xl font-bold mt-8 mb-3">
                     {children}
                   </h3>
+                ),
+                h4: ({ children }) => (
+                  <h4 className="font-serif-display text-lg font-bold mt-6 mb-2">
+                    {children}
+                  </h4>
                 ),
                 p: ({ children }) => (
                   <p className="mb-6 text-lg leading-relaxed opacity-90">
@@ -174,6 +181,32 @@ export default function BlogPost() {
                     alt={alt} 
                     className="w-full rounded-lg my-8"
                   />
+                ),
+                table: ({ children }) => (
+                  <div className="overflow-x-auto my-8">
+                    <table className="min-w-full border-collapse border opacity-90" style={{ borderColor: 'var(--text-color, #292524)' + '30' }}>
+                      {children}
+                    </table>
+                  </div>
+                ),
+                thead: ({ children }) => (
+                  <thead style={{ backgroundColor: 'var(--text-color, #292524)' + '08' }}>{children}</thead>
+                ),
+                th: ({ children }) => (
+                  <th className="border px-4 py-2 text-left font-semibold text-sm" style={{ borderColor: 'var(--text-color, #292524)' + '30' }}>
+                    {children}
+                  </th>
+                ),
+                td: ({ children }) => (
+                  <td className="border px-4 py-2 text-sm opacity-80" style={{ borderColor: 'var(--text-color, #292524)' + '30' }}>
+                    {children}
+                  </td>
+                ),
+                del: ({ children }) => (
+                  <del className="line-through opacity-60">{children}</del>
+                ),
+                hr: () => (
+                  <hr className="my-10 border-t" style={{ borderColor: 'var(--text-color, #292524)' + '20' }} />
                 ),
               }}
             >

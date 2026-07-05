@@ -1,63 +1,86 @@
-import React, { useState, useRef } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, X, Copy, CheckCircle } from 'lucide-react';
+import { Upload, X, Copy, CheckCircle, Crop } from 'lucide-react';
 import { api } from '../api';
 import toast from 'react-hot-toast';
+import ImageCropModal from './ImageCropModal';
+import { insertAtCursor } from '../utils/markdownEditor';
 
-/**
- * ImageUpload
- * Props:
- *   onInsert(markdown, url) — called when user clicks "Insert at cursor"
- *   textareaRef             — ref to the content textarea for cursor insertion
- */
-export default function ImageUpload({ onInsert, textareaRef }) {
+const ImageUpload = forwardRef(function ImageUpload(
+  { onInsert, textareaRef, openCropOnSelect = true },
+  ref,
+) {
   const [uploading, setUploading] = useState(false);
   const [uploadedImages, setUploadedImages] = useState([]);
   const [copied, setCopied] = useState(null);
+  const [pendingFile, setPendingFile] = useState(null);
+  const fileInputRef = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    openPicker: () => fileInputRef.current?.click(),
+  }));
+
+  const uploadFile = async (file, autoInsert = false) => {
+    setUploading(true);
+    try {
+      const upload = await api.uploadFile(file);
+      const newImage = { url: upload.url, name: file.name };
+      setUploadedImages((prev) => [...prev, newImage]);
+      toast.success('Image uploaded');
+      if (autoInsert) {
+        insertAtCursorPosition(upload.url, file.name.replace(/\.[^.]+$/, ''));
+      }
+      return newImage;
+    } catch (error) {
+      toast.error('Upload failed: ' + error.message);
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFiles = (files) => {
+    if (!files.length) return;
+    if (openCropOnSelect) {
+      setPendingFile(files[0]);
+      if (files.length > 1) {
+        toast('Crop one image at a time — first selected for cropping');
+      }
+    } else {
+      files.forEach((f) => uploadFile(f));
+    }
+  };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: { 'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.webp'] },
     multiple: true,
-    onDrop: async (acceptedFiles) => {
-      setUploading(true);
-      try {
-        const uploads = await Promise.all(acceptedFiles.map((f) => api.uploadFile(f)));
-        const newImages = uploads.map((upload, i) => ({
-          url: upload.url,
-          name: acceptedFiles[i].name,
-        }));
-        setUploadedImages((prev) => [...prev, ...newImages]);
-        toast.success(`${uploads.length} image(s) uploaded`);
-      } catch (error) {
-        toast.error('Upload failed: ' + error.message);
-      } finally {
-        setUploading(false);
-      }
-    },
+    noClick: !!pendingFile,
+    onDrop: handleFiles,
   });
 
-  const insertAtCursor = (url) => {
-    const markdown = `![Image](${url})`;
-    if (textareaRef?.current) {
-      const el = textareaRef.current;
-      const start = el.selectionStart;
-      const end = el.selectionEnd;
-      const before = el.value.slice(0, start);
-      const after = el.value.slice(end);
-      const newValue = before + '\n' + markdown + '\n' + after;
-      // Trigger React synthetic change
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, 'value'
-      ).set;
-      nativeInputValueSetter.call(el, newValue);
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      // Move cursor after inserted markdown
-      const newCursor = start + markdown.length + 2;
-      el.setSelectionRange(newCursor, newCursor);
-      el.focus();
+  const { ref: dropzoneRef, ...inputProps } = getInputProps();
+  const setInputRef = (node) => {
+    fileInputRef.current = node;
+    if (typeof dropzoneRef === 'function') dropzoneRef(node);
+    else if (dropzoneRef) dropzoneRef.current = node;
+  };
+
+  const insertAtCursorPosition = (url, alt = 'Image') => {
+    const markdown = `![${alt}](${url})`;
+    const el = textareaRef?.current;
+
+    if (el) {
+      const { newValue, cursorPos } = insertAtCursor(el, `\n${markdown}\n`);
+      onInsert(newValue);
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(cursorPos, cursorPos);
+      });
       toast.success('Image inserted at cursor');
+    } else {
+      onInsert((prev) => `${prev}\n${markdown}\n`);
+      toast.success('Image appended to content');
     }
-    if (onInsert) onInsert(markdown, url);
   };
 
   const copyMarkdown = async (url) => {
@@ -72,8 +95,27 @@ export default function ImageUpload({ onInsert, textareaRef }) {
     setUploadedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleCropConfirm = async (croppedFile) => {
+    setPendingFile(null);
+    await uploadFile(croppedFile, true);
+  };
+
+  const handleCropSkip = async (originalFile) => {
+    setPendingFile(null);
+    await uploadFile(originalFile, true);
+  };
+
   return (
     <div className="space-y-4">
+      {pendingFile && (
+        <ImageCropModal
+          file={pendingFile}
+          onConfirm={handleCropConfirm}
+          onSkip={handleCropSkip}
+          onCancel={() => setPendingFile(null)}
+        />
+      )}
+
       <div
         {...getRootProps()}
         className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
@@ -82,7 +124,7 @@ export default function ImageUpload({ onInsert, textareaRef }) {
             : 'border-muted-foreground/30 hover:border-muted-foreground/60'
         }`}
       >
-        <input {...getInputProps()} />
+        <input {...inputProps} ref={setInputRef} />
         <Upload className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
         {uploading ? (
           <p className="text-muted-foreground">Uploading...</p>
@@ -90,7 +132,10 @@ export default function ImageUpload({ onInsert, textareaRef }) {
           <p className="text-primary">Drop images here...</p>
         ) : (
           <div>
-            <p className="text-muted-foreground mb-1">Drag & drop or click to select images</p>
+            <p className="text-muted-foreground mb-1 flex items-center justify-center gap-1.5">
+              <Crop className="h-3.5 w-3.5" />
+              Drag & drop or click — crop before upload
+            </p>
             <p className="text-xs text-muted-foreground/60">JPEG, PNG, GIF, WebP</p>
           </div>
         )}
@@ -100,17 +145,12 @@ export default function ImageUpload({ onInsert, textareaRef }) {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {uploadedImages.map((image, index) => (
             <div key={index} className="relative group rounded-lg overflow-hidden border">
-              <img
-                src={image.url}
-                alt={image.name}
-                className="w-full h-28 object-cover"
-              />
+              <img src={image.url} alt={image.name} className="w-full h-28 object-cover" />
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
                 <button
                   type="button"
-                  onClick={() => insertAtCursor(image.url)}
+                  onClick={() => insertAtCursorPosition(image.url, image.name.replace(/\.[^.]+$/, ''))}
                   className="w-full text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
-                  title="Insert at cursor position in editor"
                 >
                   Insert at cursor
                 </button>
@@ -142,4 +182,6 @@ export default function ImageUpload({ onInsert, textareaRef }) {
       )}
     </div>
   );
-}
+});
+
+export default ImageUpload;
