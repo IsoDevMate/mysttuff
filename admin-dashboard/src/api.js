@@ -28,7 +28,7 @@ class ApiClient {
 
     const response = await fetch(url, config);
     
-    if (response.status === 401) {
+    if (response.status === 401 || response.status === 403) {
       this.clearToken();
       window.location.href = '/login';
       return;
@@ -106,6 +106,36 @@ class ApiClient {
     return this.request(`/admin/gallery/${id}`, {
       method: 'DELETE',
     });
+  }
+
+  // Social Links
+  async getSocialLinks() {
+    return this.request('/social-links');
+  }
+
+  async createSocialLink(link) {
+    return this.request('/admin/social-links', {
+      method: 'POST',
+      body: JSON.stringify(link),
+    });
+  }
+
+  async updateSocialLink(id, link) {
+    return this.request(`/admin/social-links/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(link),
+    });
+  }
+
+  async deleteSocialLink(id) {
+    return this.request(`/admin/social-links/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // System Health
+  async getHealth() {
+    return this.request('/health');
   }
 }
 

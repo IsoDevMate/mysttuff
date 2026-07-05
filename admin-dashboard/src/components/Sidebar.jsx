@@ -7,7 +7,8 @@ import {
   Upload, 
   Settings as SettingsIcon, 
   X,
-  LogOut
+  LogOut,
+  Activity
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { api } from '../api';
@@ -24,6 +25,7 @@ function Sidebar({ isOpen, toggleSidebar }) {
         { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/articles', icon: FileText, label: 'Articles' },
         { path: '/gallery', icon: Upload, label: 'Gallery' },
+        { path: '/health', icon: Activity, label: 'System Health' },
         { path: '/settings', icon: SettingsIcon, label: 'Settings' },
     ];
 

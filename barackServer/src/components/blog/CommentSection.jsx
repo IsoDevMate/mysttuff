@@ -1,11 +1,28 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/mockData";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { MessageCircle, Send } from "lucide-react";
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+async function fetchComments(postId) {
+  const res = await fetch(`${API_BASE}/articles/${postId}/comments`);
+  if (!res.ok) throw new Error('Failed to fetch comments');
+  return res.json();
+}
+
+async function postComment(postId, data) {
+  const res = await fetch(`${API_BASE}/articles/${postId}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to post comment');
+  return res.json();
+}
 
 export default function CommentSection({ postId }) {
   const [name, setName] = useState("");
@@ -15,11 +32,12 @@ export default function CommentSection({ postId }) {
 
   const { data: comments = [] } = useQuery({
     queryKey: ['comments', postId],
-    queryFn: () => base44.entities.Comment.filter({ post_id: postId }, '-created_date'),
+    queryFn: () => fetchComments(postId),
+    enabled: !!postId,
   });
 
   const createComment = useMutation({
-    mutationFn: (data) => base44.entities.Comment.create(data),
+    mutationFn: (data) => postComment(postId, data),
     onSuccess: () => {
       queryClient.invalidateQueries(['comments', postId]);
       setContent("");
@@ -30,12 +48,11 @@ export default function CommentSection({ postId }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (name && content) {
+    if (name.trim() && content.trim()) {
       createComment.mutate({
-        post_id: postId,
-        content,
-        author_name: name,
-        author_email: email,
+        author_name: name.trim(),
+        author_email: email.trim() || undefined,
+        content: content.trim(),
       });
     }
   };
@@ -74,14 +91,17 @@ export default function CommentSection({ postId }) {
           className="bg-white/50 border-current/20 min-h-[100px]"
           required
         />
-        <Button 
-          type="submit" 
+        <Button
+          type="submit"
           disabled={createComment.isPending}
           className="gap-2"
         >
           <Send className="w-4 h-4" />
           {createComment.isPending ? "Posting..." : "Post Comment"}
         </Button>
+        {createComment.isError && (
+          <p className="text-red-500 text-sm">Failed to post comment. Try again.</p>
+        )}
       </form>
 
       {/* Comments List */}
@@ -91,7 +111,7 @@ export default function CommentSection({ postId }) {
             <div className="flex items-center gap-3 mb-2">
               <span className="font-body font-medium">{comment.author_name}</span>
               <span className="font-body text-xs opacity-60">
-                {format(new Date(comment.created_date), 'MMM d, yyyy')}
+                {format(new Date(comment.created_at), 'MMM d, yyyy')}
               </span>
             </div>
             <p className="font-body text-sm leading-relaxed opacity-80">

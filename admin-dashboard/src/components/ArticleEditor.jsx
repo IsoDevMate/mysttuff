@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -13,6 +13,7 @@ const ArticleEditor = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
+    const contentRef = useRef(null);
     const [article, setArticle] = useState({
         title: '',
         slug: '',
@@ -62,12 +63,11 @@ const ArticleEditor = () => {
     };
 
     const handleImageUploaded = (imageUrl) => {
-        const markdown = `\n![Image](${imageUrl})\n`;
+        // fallback if no ref available — append to end
         setArticle(prev => ({
             ...prev,
-            content: prev.content + markdown
+            content: prev.content + `\n![Image](${imageUrl})\n`
         }));
-        toast.success('Image inserted into content');
     };
 
     const handleSave = async (publish = false) => {
@@ -176,9 +176,11 @@ const ArticleEditor = () => {
                             <div>
                                 <Label htmlFor="content">Content (Markdown)</Label>
                                 <textarea
+                                    ref={contentRef}
                                     id="content"
                                     value={article.content}
                                     onChange={(e) => setArticle(prev => ({ ...prev, content: e.target.value }))}
+                                    onInput={(e) => setArticle(prev => ({ ...prev, content: e.target.value }))}
                                     placeholder="Write your article content in Markdown..."
                                     className="w-full p-3 border rounded-lg h-96 font-mono text-sm"
                                 />
@@ -194,7 +196,7 @@ const ArticleEditor = () => {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <ImageUpload onImageUploaded={handleImageUploaded} />
+                            <ImageUpload onInsert={handleImageUploaded} textareaRef={contentRef} />
                         </CardContent>
                     </Card>
                 </div>

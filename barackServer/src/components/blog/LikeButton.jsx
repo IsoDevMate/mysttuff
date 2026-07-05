@@ -1,55 +1,54 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/mockData";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Heart } from "lucide-react";
 import { motion } from "framer-motion";
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+function getUserIdentifier() {
+  let id = localStorage.getItem('user_identifier');
+  if (!id) {
+    id = `user_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    localStorage.setItem('user_identifier', id);
+  }
+  return id;
+}
+
+async function fetchLikes(postId) {
+  const res = await fetch(`${API_BASE}/articles/${postId}/likes`);
+  if (!res.ok) throw new Error('Failed to fetch likes');
+  return res.json(); // { count: number }
+}
+
+async function toggleLike(postId, userIdentifier) {
+  const res = await fetch(`${API_BASE}/articles/${postId}/likes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_identifier: userIdentifier }),
+  });
+  if (!res.ok) throw new Error('Failed to toggle like');
+  return res.json(); // { liked: boolean, count: number }
+}
+
 export default function LikeButton({ postId }) {
-  const [userIdentifier, setUserIdentifier] = useState(null);
+  const [userIdentifier] = useState(getUserIdentifier);
+  const [hasLiked, setHasLiked] = useState(false);
   const queryClient = useQueryClient();
 
-  useEffect(() => {
-    // Get or create a unique identifier for this user
-    let identifier = localStorage.getItem('user_identifier');
-    if (!identifier) {
-      identifier = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem('user_identifier', identifier);
-    }
-    setUserIdentifier(identifier);
-  }, []);
-
-  const { data: likes = [] } = useQuery({
+  const { data } = useQuery({
     queryKey: ['likes', postId],
-    queryFn: () => base44.entities.Like.filter({ post_id: postId }),
+    queryFn: () => fetchLikes(postId),
+    enabled: !!postId,
   });
 
-  const { data: userLikes = [] } = useQuery({
-    queryKey: ['user-likes', postId, userIdentifier],
-    queryFn: () => base44.entities.Like.filter({ 
-      post_id: postId, 
-      user_identifier: userIdentifier 
-    }),
-    enabled: !!userIdentifier,
-  });
+  const likeCount = data?.count ?? 0;
 
-  const hasLiked = userLikes.length > 0;
-  const likeCount = likes.length;
-
-  const toggleLike = useMutation({
-    mutationFn: async () => {
-      if (hasLiked) {
-        await base44.entities.Like.delete(userLikes[0].id);
-      } else {
-        await base44.entities.Like.create({
-          post_id: postId,
-          user_identifier: userIdentifier,
-        });
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries(['likes', postId]);
-      queryClient.invalidateQueries(['user-likes', postId, userIdentifier]);
+  const toggle = useMutation({
+    mutationFn: () => toggleLike(postId, userIdentifier),
+    onSuccess: (result) => {
+      setHasLiked(result.liked);
+      queryClient.setQueryData(['likes', postId], { count: result.count });
     },
   });
 
@@ -57,17 +56,15 @@ export default function LikeButton({ postId }) {
     <Button
       variant="outline"
       size="sm"
-      onClick={() => toggleLike.mutate()}
-      disabled={!userIdentifier || toggleLike.isPending}
+      onClick={() => toggle.mutate()}
+      disabled={toggle.isPending}
       className="gap-2"
     >
       <motion.div
-        whileTap={{ scale: 1.2 }}
-        animate={{ scale: hasLiked ? [1, 1.2, 1] : 1 }}
+        whileTap={{ scale: 1.3 }}
+        animate={{ scale: hasLiked ? [1, 1.3, 1] : 1 }}
       >
-        <Heart 
-          className={`w-4 h-4 ${hasLiked ? 'fill-current' : ''}`} 
-        />
+        <Heart className={`w-4 h-4 ${hasLiked ? 'fill-current text-red-500' : ''}`} />
       </motion.div>
       <span>{likeCount}</span>
     </Button>
