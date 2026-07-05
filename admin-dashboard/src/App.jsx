@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Outlet, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu } from 'lucide-react';
+import { Menu, Moon, Sun } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 
 import { Button } from './components/ui/button';
@@ -14,12 +14,14 @@ import Sidebar from './components/Sidebar';
 import Login from './components/Login';
 import PrivateRoute from './components/PrivateRoute';
 import ArticleEditor from './components/ArticleEditor';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 
 const queryClient = new QueryClient();
 
 function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const { isDark, toggleTheme } = useTheme();
 
   if (location.pathname === '/login') {
     return <Outlet />;
@@ -51,7 +53,15 @@ function Layout() {
               <Menu className="h-5 w-5" />
             </Button>
             <div className="hidden lg:block" />
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleTheme}
+                aria-label="Toggle dark mode"
+              >
+                {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              </Button>
               <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
                 <span className="text-primary-foreground text-sm font-medium">A</span>
               </div>
@@ -72,23 +82,25 @@ function Layout() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route element={<PrivateRoute />}>
-            <Route element={<Layout />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/articles" element={<ArticleList />} />
-              <Route path="/articles/new" element={<ArticleEditor />} />
-              <Route path="/articles/:id" element={<ArticleEditor />} />
-              <Route path="/gallery" element={<Gallery />} />
-              <Route path="/settings" element={<Settings />} />
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <Router>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route element={<PrivateRoute />}>
+              <Route element={<Layout />}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/articles" element={<ArticleList />} />
+                <Route path="/articles/new" element={<ArticleEditor />} />
+                <Route path="/articles/:id" element={<ArticleEditor />} />
+                <Route path="/gallery" element={<Gallery />} />
+                <Route path="/settings" element={<Settings />} />
+              </Route>
             </Route>
-          </Route>
-        </Routes>
-      </Router>
-    </QueryClientProvider>
+          </Routes>
+        </Router>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 
