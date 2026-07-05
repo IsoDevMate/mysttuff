@@ -11,13 +11,40 @@ import { uploadFile, deleteFile } from './storage.js';
 import { authenticateToken, generateToken } from './auth.js';
 import os from 'os';
 
+// ─── Structured logger ───────────────────────────────────────────────────────
+
+function log(level, msg, extra = {}) {
+  const entry = { time: new Date().toISOString(), level, msg, ...extra };
+  if (level === 'error') {
+    console.error(JSON.stringify(entry));
+  } else {
+    console.log(JSON.stringify(entry));
+  }
+}
+
+// Catch anything that slips through
+process.on('uncaughtException', (err) => {
+  log('error', 'Uncaught exception', { error: err.message, stack: err.stack });
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  log('error', 'Unhandled rejection', { reason: String(reason) });
+  process.exit(1);
+});
+
+log('info', 'Starting server', {
+  node: process.version,
+  env: process.env.NODE_ENV || 'development',
+  platform: process.platform,
+});
+
 // Connection checks
 async function checkConnections() {
   try {
     await db.execute('SELECT 1');
-    console.log('✓ Database connected');
+    log('info', '✓ Database connected');
   } catch (error) {
-    console.error('✗ Database connection failed:', error.message);
+    log('error', '✗ Database connection failed', { error: error.message });
     process.exit(1);
   }
 
@@ -31,9 +58,9 @@ async function checkConnections() {
       },
     });
     await r2.send(new HeadBucketCommand({ Bucket: process.env.R2_BUCKET_NAME }));
-    console.log('✓ R2 bucket connected');
+    log('info', '✓ R2 bucket connected');
   } catch (error) {
-    console.error('✗ R2 bucket connection failed:', error.message);
+    log('error', '✗ R2 bucket connection failed', { error: error.message });
     process.exit(1);
   }
 }
@@ -45,6 +72,20 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 app.use(express.json());
+
+// Request logger
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    log('info', 'request', {
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      ms: Date.now() - start,
+    });
+  });
+  next();
+});
 
 // ─── Public API Routes ──────────────────────────────────────────────────────
 
@@ -388,7 +429,7 @@ app.post('/api/setup', async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  log('info', `Server listening`, { port: PORT, pid: process.pid });
 });
 
 // Keep-alive cron job
@@ -396,8 +437,8 @@ cron.schedule('*/10 * * * *', async () => {
   try {
     const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
     await fetch(`${url}/api/articles`);
-    console.log('Keep-alive ping sent');
+    log('info', 'Keep-alive ping sent', { url });
   } catch (error) {
-    console.error('Keep-alive ping failed:', error.message);
+    log('error', 'Keep-alive ping failed', { error: error.message });
   }
 });
