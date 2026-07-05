@@ -38,14 +38,13 @@ log('info', 'Starting server', {
   platform: process.platform,
 });
 
-// Connection checks
+// Connection checks (non-fatal — server must bind to PORT before Render health checks)
 async function checkConnections() {
   try {
     await db.execute('SELECT 1');
     log('info', '✓ Database connected');
   } catch (error) {
     log('error', '✗ Database connection failed', { error: error.message });
-    process.exit(1);
   }
 
   try {
@@ -61,17 +60,19 @@ async function checkConnections() {
     log('info', '✓ R2 bucket connected');
   } catch (error) {
     log('error', '✗ R2 bucket connection failed', { error: error.message });
-    process.exit(1);
   }
 }
-
-await checkConnections();
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 app.use(express.json());
+
+// Render health check — must respond 200 without auth or external deps
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
 
 // Request logger
 app.use((req, res, next) => {
@@ -429,7 +430,8 @@ app.post('/api/setup', async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  log('info', `Server listening`, { port: PORT, pid: process.pid });
+  log('info', 'Server listening', { port: PORT, pid: process.pid });
+  checkConnections();
 });
 
 // Keep-alive cron job
