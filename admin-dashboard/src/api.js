@@ -17,13 +17,14 @@ class ApiClient {
 
   async request(endpoint, options = {}) {
     const url = `${API_BASE}${endpoint}`;
+    const isFormData = options.body instanceof FormData;
     const config = {
+      ...options,
       headers: {
-        'Content-Type': 'application/json',
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...(this.token && { Authorization: `Bearer ${this.token}` }),
         ...options.headers,
       },
-      ...options,
     };
 
     const response = await fetch(url, config);
@@ -35,7 +36,14 @@ class ApiClient {
     }
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      let detail = '';
+      try {
+        const body = await response.json();
+        detail = body.error || body.message || '';
+      } catch {
+        detail = response.status === 404 ? 'Endpoint not found — backend may need redeploying' : '';
+      }
+      throw new Error(detail || `HTTP error! status: ${response.status}`);
     }
 
     return response.json();

@@ -241,8 +241,13 @@ const ArticleEditor = () => {
                                 <ImageUpload
                                     ref={imageUploadRef}
                                     onInsert={handleContentChange}
+                                    onSetFeatured={(url) => setArticle(prev => ({ ...prev, image_url: url }))}
                                     textareaRef={contentRef}
                                 />
+                                <p className="text-xs text-muted-foreground mt-2">
+                                    Place your cursor in the article body, then click <strong>Insert at cursor</strong>.
+                                    Use <strong>Set as featured</strong> for the hero banner above the title — not inside the text.
+                                </p>
                             </CardContent>
                         </Card>
 
@@ -263,12 +268,15 @@ const ArticleEditor = () => {
                                         />
                                     </div>
                                     <div>
-                                        <Label htmlFor="featured-image">Featured Image URL</Label>
+                                        <Label htmlFor="featured-image">Featured Hero Image</Label>
+                                        <p className="text-xs text-muted-foreground mb-1">
+                                            Optional banner above the title — separate from inline body images
+                                        </p>
                                         <Input
                                             id="featured-image"
                                             value={article.image_url}
                                             onChange={(e) => setArticle(prev => ({ ...prev, image_url: e.target.value }))}
-                                            placeholder="https://..."
+                                            placeholder="https://... or use Set as featured on an upload"
                                         />
                                         {article.image_url && (
                                             <img

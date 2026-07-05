@@ -75,6 +75,13 @@ export default function BlogPost() {
 
           {/* Header */}
           <header className="mb-12">
+            {post.image_url && (
+              <img
+                src={post.image_url}
+                alt=""
+                className="w-full max-h-80 object-cover rounded-lg mb-8"
+              />
+            )}
             <div className="flex items-center gap-3 mb-4">
               {post.category && (
                 <span className="font-body text-xs uppercase tracking-wider opacity-60 bg-current/5 px-2 py-1 rounded">

@@ -7,7 +7,7 @@ import ImageCropModal from './ImageCropModal';
 import { insertAtCursor } from '../utils/markdownEditor';
 
 const ImageUpload = forwardRef(function ImageUpload(
-  { onInsert, textareaRef, openCropOnSelect = true },
+  { onInsert, onSetFeatured, onUploaded, textareaRef, openCropOnSelect = true },
   ref,
 ) {
   const [uploading, setUploading] = useState(false);
@@ -20,16 +20,14 @@ const ImageUpload = forwardRef(function ImageUpload(
     openPicker: () => fileInputRef.current?.click(),
   }));
 
-  const uploadFile = async (file, autoInsert = false) => {
+  const uploadFile = async (file) => {
     setUploading(true);
     try {
       const upload = await api.uploadFile(file);
       const newImage = { url: upload.url, name: file.name };
       setUploadedImages((prev) => [...prev, newImage]);
-      toast.success('Image uploaded');
-      if (autoInsert) {
-        insertAtCursorPosition(upload.url, file.name.replace(/\.[^.]+$/, ''));
-      }
+      toast.success('Uploaded — click "Insert at cursor" to place it in your article');
+      onUploaded?.(upload.url);
       return newImage;
     } catch (error) {
       toast.error('Upload failed: ' + error.message);
@@ -97,12 +95,12 @@ const ImageUpload = forwardRef(function ImageUpload(
 
   const handleCropConfirm = async (croppedFile) => {
     setPendingFile(null);
-    await uploadFile(croppedFile, true);
+    await uploadFile(croppedFile);
   };
 
   const handleCropSkip = async (originalFile) => {
     setPendingFile(null);
-    await uploadFile(originalFile, true);
+    await uploadFile(originalFile);
   };
 
   return (
@@ -154,6 +152,18 @@ const ImageUpload = forwardRef(function ImageUpload(
                 >
                   Insert at cursor
                 </button>
+                {onSetFeatured && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSetFeatured(image.url);
+                      toast.success('Set as featured hero image');
+                    }}
+                    className="w-full text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
+                  >
+                    Set as featured
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => copyMarkdown(image.url)}

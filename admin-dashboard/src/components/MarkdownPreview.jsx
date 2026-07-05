@@ -87,18 +87,21 @@ export function MarkdownPreview({ content, title, category, image_url }) {
   return (
     <div className="prose max-w-none font-sans">
       {image_url && (
-        <img
-          src={image_url}
-          alt="Featured"
-          className="w-full h-64 object-cover rounded-lg mb-6"
-          onError={(e) => {
-            e.target.style.display = 'none';
-            e.target.insertAdjacentHTML(
-              'afterend',
-              '<p class="text-red-500 text-sm border border-red-300 rounded p-2 mb-4">⚠ Featured image failed to load — check the URL</p>',
-            );
-          }}
-        />
+        <>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Featured hero</p>
+          <img
+            src={image_url}
+            alt="Featured"
+            className="w-full h-64 object-cover rounded-lg mb-6"
+            onError={(e) => {
+              e.target.style.display = 'none';
+              e.target.insertAdjacentHTML(
+                'afterend',
+                '<p class="text-red-500 text-sm border border-red-300 rounded p-2 mb-4">⚠ Featured image failed to load — check the URL</p>',
+              );
+            }}
+          />
+        </>
       )}
       {category && (
         <span className="text-xs uppercase tracking-wider opacity-60 bg-muted px-2 py-1 rounded">

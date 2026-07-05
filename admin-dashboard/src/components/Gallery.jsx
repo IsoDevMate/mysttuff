@@ -127,7 +127,7 @@ const Gallery = () => {
 
                         <div>
                             <Label>Upload Image</Label>
-                            <ImageUpload onImageUploaded={handleImageUploaded} />
+                            <ImageUpload onUploaded={handleImageUploaded} />
                         </div>
 
                         {newItem.image_url && (
