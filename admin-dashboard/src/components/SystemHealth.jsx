@@ -184,14 +184,31 @@ export default function SystemHealth() {
               <CardContent className="space-y-2">
                 <StatusBadge status={data.storage.status} />
                 {data.storage.status === 'ok' ? (
-                  <div className="text-sm">
+                  <div className="text-sm space-y-1">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Latency</span>
                       <span className="font-medium">{data.storage.latencyMs}ms</span>
                     </div>
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="text-muted-foreground flex-shrink-0">Public URL</span>
+                      {data.r2PublicUrlConfigured ? (
+                        <span className="font-medium text-green-600 text-xs break-all text-right">{data.r2PublicUrl}</span>
+                      ) : (
+                        <span className="font-medium text-red-500 text-xs">
+                          ⚠️ Not set — images won't load publicly. Set R2_PUBLIC_URL in Render env vars.
+                        </span>
+                      )}
+                    </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-red-500 break-all">{data.storage.error}</p>
+                  <div className="space-y-1">
+                    <p className="text-xs text-red-500 break-all">{data.storage.error}</p>
+                    {!data.r2PublicUrlConfigured && (
+                      <p className="text-xs text-orange-500">
+                        R2_PUBLIC_URL is also not configured — images won't display even if upload works.
+                      </p>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>

@@ -8,7 +8,8 @@ import {
   Settings as SettingsIcon, 
   X,
   LogOut,
-  Activity
+  Activity,
+  ClipboardList
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { api } from '../api';
@@ -26,6 +27,7 @@ function Sidebar({ isOpen, toggleSidebar }) {
         { path: '/articles', icon: FileText, label: 'Articles' },
         { path: '/gallery', icon: Upload, label: 'Gallery' },
         { path: '/health', icon: Activity, label: 'System Health' },
+        { path: '/audit-logs', icon: ClipboardList, label: 'Audit Logs' },
         { path: '/settings', icon: SettingsIcon, label: 'Settings' },
     ];
 

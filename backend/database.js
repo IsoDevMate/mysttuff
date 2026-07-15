@@ -57,6 +57,15 @@ if (process.env.TURSO_AUTH_TOKEN) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(post_id, user_identifier)
     )`,
+    `CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      action TEXT NOT NULL,
+      resource_type TEXT,
+      resource_id TEXT,
+      resource_title TEXT,
+      detail TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
   ], 'write');
 }
 

@@ -88,6 +88,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// ─── Audit log helper ────────────────────────────────────────────────────────
+
+async function auditLog(action, resourceType, resourceId, resourceTitle, detail = '') {
+  try {
+    await db.execute({
+      sql: 'INSERT INTO audit_logs (id, action, resource_type, resource_id, resource_title, detail) VALUES (?, ?, ?, ?, ?, ?)',
+      args: [uuidv4(), action, resourceType, resourceId, resourceTitle || '', detail],
+    });
+  } catch (e) {
+    log('error', 'Failed to write audit log', { error: e.message });
+  }
+}
+
 // ─── Public API Routes ──────────────────────────────────────────────────────
 
 app.get('/api/articles', async (req, res) => {
@@ -237,6 +250,7 @@ app.post('/api/admin/articles', authenticateToken, async (req, res) => {
       args: [id, title, slug, content, excerpt, category, published ? 1 : 0, image_url || null],
     });
     const result = await db.execute({ sql: 'SELECT * FROM articles WHERE id = ?', args: [id] });
+    await auditLog('CREATE', 'article', id, title);
     res.json(result.rows[0]);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -251,6 +265,7 @@ app.put('/api/admin/articles/:id', authenticateToken, async (req, res) => {
       args: [title, slug, content, excerpt, category, published ? 1 : 0, image_url || null, req.params.id],
     });
     const result = await db.execute({ sql: 'SELECT * FROM articles WHERE id = ?', args: [req.params.id] });
+    await auditLog('UPDATE', 'article', req.params.id, title, published ? 'published' : 'draft');
     res.json(result.rows[0]);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -259,7 +274,9 @@ app.put('/api/admin/articles/:id', authenticateToken, async (req, res) => {
 
 app.delete('/api/admin/articles/:id', authenticateToken, async (req, res) => {
   try {
+    const existing = await db.execute({ sql: 'SELECT title FROM articles WHERE id = ?', args: [req.params.id] });
     await db.execute({ sql: 'DELETE FROM articles WHERE id = ?', args: [req.params.id] });
+    await auditLog('DELETE', 'article', req.params.id, existing.rows[0]?.title || req.params.id);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -271,6 +288,7 @@ app.delete('/api/admin/articles/:id', authenticateToken, async (req, res) => {
 app.delete('/api/admin/comments/:id', authenticateToken, async (req, res) => {
   try {
     await db.execute({ sql: 'DELETE FROM comments WHERE id = ?', args: [req.params.id] });
+    await auditLog('DELETE', 'comment', req.params.id, req.params.id);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -302,6 +320,7 @@ app.post('/api/admin/gallery', authenticateToken, async (req, res) => {
       args: [id, title, description, type, image_url, date],
     });
     const result = await db.execute({ sql: 'SELECT * FROM gallery WHERE id = ?', args: [id] });
+    await auditLog('CREATE', 'gallery', id, title);
     res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -310,7 +329,9 @@ app.post('/api/admin/gallery', authenticateToken, async (req, res) => {
 
 app.delete('/api/admin/gallery/:id', authenticateToken, async (req, res) => {
   try {
+    const existing = await db.execute({ sql: 'SELECT title FROM gallery WHERE id = ?', args: [req.params.id] });
     await db.execute({ sql: 'DELETE FROM gallery WHERE id = ?', args: [req.params.id] });
+    await auditLog('DELETE', 'gallery', req.params.id, existing.rows[0]?.title || req.params.id);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -329,6 +350,7 @@ app.post('/api/admin/social-links', authenticateToken, async (req, res) => {
       args: [id, name, url, icon || 'default', order_index ?? 0],
     });
     const result = await db.execute({ sql: 'SELECT * FROM social_links WHERE id = ?', args: [id] });
+    await auditLog('CREATE', 'social_link', id, name);
     res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -343,6 +365,7 @@ app.put('/api/admin/social-links/:id', authenticateToken, async (req, res) => {
       args: [name, url, icon || 'default', order_index ?? 0, req.params.id],
     });
     const result = await db.execute({ sql: 'SELECT * FROM social_links WHERE id = ?', args: [req.params.id] });
+    await auditLog('UPDATE', 'social_link', req.params.id, name);
     res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -351,8 +374,25 @@ app.put('/api/admin/social-links/:id', authenticateToken, async (req, res) => {
 
 app.delete('/api/admin/social-links/:id', authenticateToken, async (req, res) => {
   try {
+    const existing = await db.execute({ sql: 'SELECT name FROM social_links WHERE id = ?', args: [req.params.id] });
     await db.execute({ sql: 'DELETE FROM social_links WHERE id = ?', args: [req.params.id] });
+    await auditLog('DELETE', 'social_link', req.params.id, existing.rows[0]?.name || req.params.id);
     res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ─── Audit Logs ──────────────────────────────────────────────────────────────
+
+app.get('/api/admin/audit-logs', authenticateToken, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const result = await db.execute({
+      sql: 'SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ?',
+      args: [limit],
+    });
+    res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -375,6 +415,8 @@ app.get('/api/health', authenticateToken, async (req, res) => {
     },
     database: { status: 'unknown', latencyMs: null },
     storage: { status: 'unknown', latencyMs: null },
+    r2PublicUrl: process.env.R2_PUBLIC_URL || null,
+    r2PublicUrlConfigured: !!(process.env.R2_PUBLIC_URL && process.env.R2_PUBLIC_URL.startsWith('http')),
   };
 
   // DB check

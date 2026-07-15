@@ -16,6 +16,7 @@ import PrivateRoute from './components/PrivateRoute';
 import ArticleEditor from './components/ArticleEditor';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import SystemHealth from './components/SystemHealth';
+import AuditLogs from './components/AuditLogs';
 
 const queryClient = new QueryClient();
 
@@ -97,6 +98,7 @@ function App() {
                 <Route path="/gallery" element={<Gallery />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/health" element={<SystemHealth />} />
+                <Route path="/audit-logs" element={<AuditLogs />} />
               </Route>
             </Route>
           </Routes>

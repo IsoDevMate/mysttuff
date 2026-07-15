@@ -145,6 +145,11 @@ class ApiClient {
   async getHealth() {
     return this.request('/health');
   }
+
+  // Audit Logs
+  async getAuditLogs(limit = 50) {
+    return this.request(`/admin/audit-logs?limit=${limit}`);
+  }
 }
 
 export const api = new ApiClient();
