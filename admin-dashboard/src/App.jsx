@@ -8,6 +8,7 @@ import { Toaster } from 'react-hot-toast';
 import { Button } from './components/ui/button';
 import ArticleList from './components/ArticleList';
 import Gallery from './components/Gallery';
+import HotTakes from './components/HotTakes';
 import Dashboard from './components/Dashboard';
 import Settings from './components/Settings';
 import Sidebar from './components/Sidebar';
@@ -96,6 +97,7 @@ function App() {
                 <Route path="/articles/new" element={<ArticleEditor />} />
                 <Route path="/articles/:id" element={<ArticleEditor />} />
                 <Route path="/gallery" element={<Gallery />} />
+                <Route path="/hot-takes" element={<HotTakes />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/health" element={<SystemHealth />} />
                 <Route path="/audit-logs" element={<AuditLogs />} />

@@ -88,6 +88,22 @@ app.use((req, res, next) => {
   next();
 });
 
+// ─── Serialization helpers ──────────────────────────────────────────────────
+
+// tags arrives as an array from the admin UI; store as JSON text for the DB
+function serializeTags(tags) {
+  if (!tags) return null;
+  const list = Array.isArray(tags) ? tags : String(tags).split(',');
+  const clean = list.map((t) => String(t).trim()).filter(Boolean);
+  return clean.length ? JSON.stringify(clean) : null;
+}
+
+// media arrives as an array of { url, type: 'image' | 'video' }; store as JSON text
+function serializeMedia(media) {
+  if (!Array.isArray(media) || media.length === 0) return null;
+  return JSON.stringify(media);
+}
+
 // ─── Audit log helper ────────────────────────────────────────────────────────
 
 async function auditLog(action, resourceType, resourceId, resourceTitle, detail = '') {
@@ -134,6 +150,15 @@ app.get('/api/gallery', async (req, res) => {
 app.get('/api/social-links', async (req, res) => {
   try {
     const result = await db.execute('SELECT * FROM social_links ORDER BY order_index');
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/hot-takes', async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM hot_takes WHERE published = 1 ORDER BY created_at DESC');
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -242,12 +267,12 @@ app.get('/api/admin/articles', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/admin/articles', authenticateToken, async (req, res) => {
-  const { title, slug, content, excerpt, category, published, image_url } = req.body;
+  const { title, slug, content, excerpt, category, published, image_url, tags, show_toc } = req.body;
   const id = uuidv4();
   try {
     await db.execute({
-      sql: 'INSERT INTO articles (id, title, slug, content, excerpt, category, published, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      args: [id, title, slug, content, excerpt, category, published ? 1 : 0, image_url || null],
+      sql: 'INSERT INTO articles (id, title, slug, content, excerpt, category, published, image_url, tags, show_toc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      args: [id, title, slug, content, excerpt, category, published ? 1 : 0, image_url || null, serializeTags(tags), show_toc ? 1 : 0],
     });
     const result = await db.execute({ sql: 'SELECT * FROM articles WHERE id = ?', args: [id] });
     await auditLog('CREATE', 'article', id, title);
@@ -258,11 +283,11 @@ app.post('/api/admin/articles', authenticateToken, async (req, res) => {
 });
 
 app.put('/api/admin/articles/:id', authenticateToken, async (req, res) => {
-  const { title, slug, content, excerpt, category, published, image_url } = req.body;
+  const { title, slug, content, excerpt, category, published, image_url, tags, show_toc } = req.body;
   try {
     await db.execute({
-      sql: 'UPDATE articles SET title = ?, slug = ?, content = ?, excerpt = ?, category = ?, published = ?, image_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      args: [title, slug, content, excerpt, category, published ? 1 : 0, image_url || null, req.params.id],
+      sql: 'UPDATE articles SET title = ?, slug = ?, content = ?, excerpt = ?, category = ?, published = ?, image_url = ?, tags = ?, show_toc = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      args: [title, slug, content, excerpt, category, published ? 1 : 0, image_url || null, serializeTags(tags), show_toc ? 1 : 0, req.params.id],
     });
     const result = await db.execute({ sql: 'SELECT * FROM articles WHERE id = ?', args: [req.params.id] });
     await auditLog('UPDATE', 'article', req.params.id, title, published ? 'published' : 'draft');
@@ -295,6 +320,59 @@ app.delete('/api/admin/comments/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── Hot Takes Management ──────────────────────────────────────────────────
+
+app.get('/api/admin/hot-takes', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM hot_takes ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/hot-takes', authenticateToken, async (req, res) => {
+  const { take, article_slug, published } = req.body;
+  if (!take?.trim()) return res.status(400).json({ error: 'Take text is required' });
+  const id = uuidv4();
+  try {
+    await db.execute({
+      sql: 'INSERT INTO hot_takes (id, take, article_slug, published) VALUES (?, ?, ?, ?)',
+      args: [id, take.trim(), article_slug || null, published === false ? 0 : 1],
+    });
+    const result = await db.execute({ sql: 'SELECT * FROM hot_takes WHERE id = ?', args: [id] });
+    await auditLog('CREATE', 'hot_take', id, take.trim().slice(0, 60));
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/admin/hot-takes/:id', authenticateToken, async (req, res) => {
+  const { take, article_slug, published } = req.body;
+  try {
+    await db.execute({
+      sql: 'UPDATE hot_takes SET take = ?, article_slug = ?, published = ? WHERE id = ?',
+      args: [take, article_slug || null, published ? 1 : 0, req.params.id],
+    });
+    const result = await db.execute({ sql: 'SELECT * FROM hot_takes WHERE id = ?', args: [req.params.id] });
+    await auditLog('UPDATE', 'hot_take', req.params.id, (take || '').slice(0, 60));
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/hot-takes/:id', authenticateToken, async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM hot_takes WHERE id = ?', args: [req.params.id] });
+    await auditLog('DELETE', 'hot_take', req.params.id, req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ─── File Upload ─────────────────────────────────────────────────────────────
 
 app.post('/api/admin/upload', authenticateToken, upload.single('file'), async (req, res) => {
@@ -312,12 +390,12 @@ app.post('/api/admin/upload', authenticateToken, upload.single('file'), async (r
 // ─── Gallery Management ───────────────────────────────────────────────────────
 
 app.post('/api/admin/gallery', authenticateToken, async (req, res) => {
-  const { title, description, type, image_url, date } = req.body;
+  const { title, description, type, image_url, media, date } = req.body;
   const id = uuidv4();
   try {
     await db.execute({
-      sql: 'INSERT INTO gallery (id, title, description, type, image_url, date) VALUES (?, ?, ?, ?, ?, ?)',
-      args: [id, title, description, type, image_url, date],
+      sql: 'INSERT INTO gallery (id, title, description, type, image_url, media, date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      args: [id, title, description, type, image_url, serializeMedia(media), date],
     });
     const result = await db.execute({ sql: 'SELECT * FROM gallery WHERE id = ?', args: [id] });
     await auditLog('CREATE', 'gallery', id, title);

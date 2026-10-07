@@ -66,7 +66,31 @@ if (process.env.TURSO_AUTH_TOKEN) {
       detail TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS hot_takes (
+      id TEXT PRIMARY KEY,
+      take TEXT NOT NULL,
+      article_slug TEXT,
+      published INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
   ], 'write');
+
+  // Column migrations — ALTER TABLE errors if the column already exists, so ignore those.
+  const columnMigrations = [
+    'ALTER TABLE articles ADD COLUMN tags TEXT',
+    'ALTER TABLE articles ADD COLUMN show_toc INTEGER DEFAULT 1',
+    'ALTER TABLE gallery ADD COLUMN media TEXT',
+  ];
+  for (const sql of columnMigrations) {
+    try {
+      await db.execute(sql);
+      console.log('Migration applied:', sql);
+    } catch (e) {
+      if (!String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migration failed:', sql, e.message);
+      }
+    }
+  }
 }
 
 export default db;

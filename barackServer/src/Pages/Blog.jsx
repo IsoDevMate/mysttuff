@@ -5,13 +5,27 @@ import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, X, Tag } from "lucide-react";
+import HotTakesRail from "@/components/blog/HotTakesRail";
+
+const parseTags = (raw) => {
+  if (Array.isArray(raw)) return raw;
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+};
 
 const categories = ["all", "backend", "ai", "databases", "experiments", "other"];
 
 export default function Blog() {
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const urlParams = new URLSearchParams(window.location.search);
+  const activeTag = urlParams.get("tag") || "";
 
   const { data: posts = [], isLoading } = useQuery({
     queryKey: ['posts'],
@@ -20,6 +34,10 @@ export default function Blog() {
 
   const filteredPosts = posts
     .filter(p => activeCategory === "all" || p.category === activeCategory)
+    .filter(p => {
+      if (!activeTag) return true;
+      return parseTags(p.tags).includes(activeTag);
+    })
     .filter(p => {
       if (!searchQuery) return true;
       const query = searchQuery.toLowerCase();
@@ -40,6 +58,25 @@ export default function Blog() {
           Thoughts and experiments I've documented.
         </p>
       </header>
+
+      {/* AI Hot Takes — horizontal rail, links reroute to articles */}
+      <HotTakesRail />
+
+      {/* Active tag filter */}
+      {activeTag && (
+        <div className="mb-6 flex items-center gap-2">
+          <span className="font-body text-xs opacity-50 flex items-center gap-1.5">
+            <Tag className="w-3 h-3" /> filtered by
+          </span>
+          <Link
+            to={createPageUrl("Blog")}
+            className="font-body text-xs lowercase border px-2 py-0.5 rounded-full flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity"
+            style={{ borderColor: 'var(--text-color, #292524)' + '30' }}
+          >
+            #{activeTag} <X className="w-3 h-3" />
+          </Link>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative mb-8">
@@ -107,6 +144,18 @@ export default function Blog() {
                 <h2 className="font-serif-display text-3xl font-bold text-stone-900 group-hover:text-stone-600 transition-colors mb-3">
                   {post.title}
                 </h2>
+                {parseTags(post.tags).length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {parseTags(post.tags).map((tag) => (
+                      <span
+                        key={tag}
+                        className="font-body text-xs lowercase text-stone-500 border border-stone-200 px-2 py-0.5 rounded-full"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {post.excerpt && (
                   <p className="font-body text-stone-500 leading-relaxed">
                     {post.excerpt}

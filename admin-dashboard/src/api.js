@@ -141,6 +141,31 @@ class ApiClient {
     });
   }
 
+  // Hot Takes
+  async getHotTakes() {
+    return this.request('/admin/hot-takes');
+  }
+
+  async createHotTake(take) {
+    return this.request('/admin/hot-takes', {
+      method: 'POST',
+      body: JSON.stringify(take),
+    });
+  }
+
+  async updateHotTake(id, take) {
+    return this.request(`/admin/hot-takes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(take),
+    });
+  }
+
+  async deleteHotTake(id) {
+    return this.request(`/admin/hot-takes/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // System Health
   async getHealth() {
     return this.request('/health');

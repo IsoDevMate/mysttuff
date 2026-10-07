@@ -26,6 +26,9 @@ build/
 .DS_Store
 Thumbs.db
 
+# Freebuff agent workspace
+.freebuff/
+
 # Logs
 logs/
 *.log

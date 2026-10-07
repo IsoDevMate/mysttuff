@@ -1,9 +1,9 @@
-import React from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
 import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Clock } from "lucide-react";
+import { ArrowLeft, Clock, ListTree } from "lucide-react";
 import { format } from "date-fns";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -11,6 +11,39 @@ import CommentSection from "@/components/blog/CommentSection";
 import LikeButton from "@/components/blog/LikeButton";
 import ShareButtons from "@/components/blog/ShareButtons";
 import RelatedPosts from "@/components/blog/RelatedPosts";
+
+const slugify = (text) =>
+  String(text).toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-");
+
+const textOf = (children) =>
+  Array.isArray(children) ? children.map(textOf).join("") : String(children ?? "");
+
+const parseTags = (raw) => {
+  if (Array.isArray(raw)) return raw;
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+};
+
+// H2/H3 headings from the markdown source (fence-aware) — powers the auto TOC
+const getTocItems = (markdown) => {
+  const items = [];
+  let inFence = false;
+  for (const line of (markdown || "").split("\n")) {
+    if (line.trimStart().startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const m = line.match(/^(#{2,3})\s+(.*)$/);
+    if (m) items.push({ level: m[1].length, text: m[2].trim(), id: slugify(m[2]) });
+  }
+  return items;
+};
 
 export default function BlogPost() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -26,6 +59,51 @@ export default function BlogPost() {
     queryKey: ['socials-sidebar'],
     queryFn: () => blogAPI.getSocialLinks(),
   });
+
+  const tags = parseTags(post?.tags);
+  const tocItems = useMemo(
+    () => (post && post.show_toc !== 0 ? getTocItems(post.content) : []),
+    [post]
+  );
+  const [activeId, setActiveId] = useState(null);
+
+  // Scroll-spy: highlight the section currently on screen
+  useEffect(() => {
+    if (!tocItems.length) return;
+    const els = tocItems.map((t) => document.getElementById(t.id)).filter(Boolean);
+    if (!els.length) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length) setActiveId(visible[0].target.id);
+      },
+      { rootMargin: "-80px 0px -65% 0px" }
+    );
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, [tocItems]);
+
+  const scrollTo = (e, id) => {
+    e.preventDefault();
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const tocNav = (
+    <nav className="space-y-1.5">
+      {tocItems.map((item) => (
+        <a
+          key={item.id}
+          href={`#${item.id}`}
+          onClick={(e) => scrollTo(e, item.id)}
+          className={`block font-body text-xs transition-opacity hover:opacity-100 ${
+            item.level === 3 ? "pl-3" : ""
+          } ${activeId === item.id ? "opacity-100 font-medium" : "opacity-50"}`}
+        >
+          {item.text}
+        </a>
+      ))}
+    </nav>
+  );
 
   if (isLoading) {
     return (
@@ -96,6 +174,21 @@ export default function BlogPost() {
             <h1 className="font-serif-display text-4xl md:text-5xl font-bold leading-tight mb-6">
               {post.title}
             </h1>
+
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-5">
+                {tags.map((tag) => (
+                  <Link
+                    key={tag}
+                    to={createPageUrl(`Blog?tag=${encodeURIComponent(tag)}`)}
+                    className="font-body text-xs lowercase opacity-50 hover:opacity-100 transition-opacity border px-2 py-0.5 rounded-full"
+                    style={{ borderColor: 'var(--text-color, #292524)' + '30' }}
+                  >
+                    #{tag}
+                  </Link>
+                ))}
+              </div>
+            )}
             
             {/* Like Button */}
             <div className="flex items-center gap-3">
@@ -105,6 +198,16 @@ export default function BlogPost() {
 
           {/* Divider */}
           <div className="border-t mb-12" style={{ borderColor: 'var(--text-color, #292524)' + '20' }} />
+
+          {/* Table of contents — mobile (desktop version lives in the sidebar) */}
+          {tocItems.length >= 2 && (
+            <details className="lg:hidden mb-8 border rounded-lg p-4" style={{ borderColor: 'var(--text-color, #292524)' + '20' }}>
+              <summary className="font-body text-sm font-medium cursor-pointer flex items-center gap-2">
+                <ListTree className="w-4 h-4" /> On this page
+              </summary>
+              <div className="mt-3">{tocNav}</div>
+            </details>
+          )}
 
           {/* Content */}
           <article className="font-body leading-relaxed prose-styles">
@@ -117,12 +220,18 @@ export default function BlogPost() {
                   </h1>
                 ),
                 h2: ({ children }) => (
-                  <h2 className="font-serif-display text-2xl font-bold mt-10 mb-4">
+                  <h2
+                    id={slugify(textOf(children))}
+                    className="font-serif-display text-2xl font-bold mt-10 mb-4 scroll-mt-24"
+                  >
                     {children}
                   </h2>
                 ),
                 h3: ({ children }) => (
-                  <h3 className="font-serif-display text-xl font-bold mt-8 mb-3">
+                  <h3
+                    id={slugify(textOf(children))}
+                    className="font-serif-display text-xl font-bold mt-8 mb-3 scroll-mt-24"
+                  >
                     {children}
                   </h3>
                 ),
@@ -156,15 +265,18 @@ export default function BlogPost() {
                     {children}
                   </blockquote>
                 ),
-                code: ({ inline, children }) => 
-                  inline ? (
-                    <code className="bg-current/10 px-1.5 py-0.5 rounded text-sm font-mono">
-                      {children}
-                    </code>
-                  ) : (
+                // react-markdown v9+ removed the `inline` prop — detect via language- class.
+                // `pre` renders its child directly so block code isn't nested <pre><pre>.
+                pre: ({ children }) => <>{children}</>,
+                code: ({ className, children }) =>
+                  /language-/.test(className || "") ? (
                     <pre className="bg-black text-white p-6 rounded-lg overflow-x-auto my-6">
                       <code className="font-mono text-sm">{children}</code>
                     </pre>
+                  ) : (
+                    <code className="bg-current/10 px-1.5 py-0.5 rounded text-sm font-mono">
+                      {children}
+                    </code>
                   ),
                 a: ({ children, href }) => (
                   <a 
@@ -241,6 +353,16 @@ export default function BlogPost() {
         {/* Sidebar - Desktop Only */}
         <aside className="hidden lg:block w-64 sticky top-24 self-start">
           <div className="space-y-8">
+            {/* Table of contents */}
+            {tocItems.length >= 2 && (
+              <div className="p-6 border rounded-lg" style={{ borderColor: 'var(--text-color, #292524)' + '20' }}>
+                <p className="font-body text-sm font-medium mb-3 flex items-center gap-2">
+                  <ListTree className="w-4 h-4" /> On this page
+                </p>
+                {tocNav}
+              </div>
+            )}
+
             {/* Share */}
             <div className="p-6 border rounded-lg" style={{ borderColor: 'var(--text-color, #292524)' + '20' }}>
               <ShareButtons title={post.title} />

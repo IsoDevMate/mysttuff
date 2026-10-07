@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import Cropper from 'react-easy-crop';
 import { X, Check } from 'lucide-react';
 import { Button } from './ui/button';
@@ -11,20 +11,24 @@ const ASPECTS = [
   { label: '1:1', value: 1 },
 ];
 
-export default function ImageCropModal({ file, onConfirm, onSkip, onCancel }) {
+export default function ImageCropModal({ file, queuePosition = 1, onConfirm, onSkip, onCancel }) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [aspect, setAspect] = useState(undefined);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [processing, setProcessing] = useState(false);
 
-  const imageUrl = URL.createObjectURL(file);
+  // Create the object URL once per file and always revoke it (was leaking on every render)
+  const [imageUrl, setImageUrl] = useState(() => URL.createObjectURL(file));
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    setImageUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   const onCropComplete = useCallback((_croppedArea, croppedPixels) => {
     setCroppedAreaPixels(croppedPixels);
   }, []);
-
-  const cleanup = () => URL.revokeObjectURL(imageUrl);
 
   const handleConfirm = async () => {
     if (!croppedAreaPixels) return;
@@ -33,11 +37,9 @@ export default function ImageCropModal({ file, onConfirm, onSkip, onCancel }) {
       const mimeType = file.type || 'image/jpeg';
       const ext = mimeType.split('/')[1] || 'jpg';
       const blob = await getCroppedBlob(imageUrl, croppedAreaPixels, mimeType);
-      const croppedFile = new File([blob], `cropped.${ext}`, { type: mimeType });
-      cleanup();
+      const croppedFile = new File([blob], `cropped-${Date.now()}.${ext}`, { type: mimeType });
       onConfirm(croppedFile);
     } catch {
-      cleanup();
       onSkip(file);
     } finally {
       setProcessing(false);
@@ -45,21 +47,22 @@ export default function ImageCropModal({ file, onConfirm, onSkip, onCancel }) {
   };
 
   const handleSkip = () => {
-    cleanup();
     onSkip(file);
-  };
-
-  const handleCancel = () => {
-    cleanup();
-    onCancel();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b">
-          <h3 className="font-semibold text-sm">Crop Image</h3>
-          <button type="button" onClick={handleCancel} className="p-1 rounded hover:bg-muted">
+          <h3 className="font-semibold text-sm">
+            Crop Image
+            {queuePosition > 1 && (
+              <span className="ml-2 text-xs text-muted-foreground font-normal">
+                {queuePosition} in queue
+              </span>
+            )}
+          </h3>
+          <button type="button" onClick={onCancel} className="p-1 rounded hover:bg-muted">
             <X className="h-4 w-4" />
           </button>
         </div>

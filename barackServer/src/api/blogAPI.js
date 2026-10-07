@@ -36,6 +36,10 @@ class BlogAPI {
   async getSocialLinks() {
     return this.request('/social-links');
   }
+
+  async getHotTakes() {
+    return this.request('/hot-takes');
+  }
 }
 
 export const blogAPI = new BlogAPI();

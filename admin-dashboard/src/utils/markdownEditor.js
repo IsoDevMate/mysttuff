@@ -70,3 +70,112 @@ export function applySnippet(textarea, snippet) {
   }
   return insertAtCursor(textarea, snippet.value);
 }
+
+// ─── Article structure helpers (image drag-repositioning) ────────────────────
+
+const IMAGE_LINE_RE = /^\s*!\[([^\]]*)\]\(([^)\s]+)[^)]*\)\s*$/;
+
+/**
+ * Split markdown content into top-level blocks (fence-aware so code blocks
+ * containing blank lines stay intact).
+ * Returns [{ raw, startLine, endLine, kind: 'heading' | 'image' | 'other' | 'code', text }]
+ * where kind 'image' = standalone image block, 'heading' = markdown heading.
+ */
+export function splitBlocks(content) {
+  const lines = content.split('\n');
+  const blocks = [];
+  let current = [];
+  let startLine = 0;
+  let inFence = false;
+
+  const flush = (endLineExclusive) => {
+    if (current.length) {
+      const raw = current.join('\n');
+      const first = current[0] || '';
+      const headingMatch = first.match(/^(#{1,6})\s+(.*)$/);
+      let kind = 'other';
+      let text = '';
+      if (inFence || /^\s*```/.test(first)) {
+        kind = 'code';
+      } else if (headingMatch) {
+        kind = 'heading';
+        text = headingMatch[2];
+      } else if (IMAGE_LINE_RE.test(raw)) {
+        kind = 'image';
+        const m = raw.match(IMAGE_LINE_RE);
+        text = m?.[1] || m?.[2] || 'image';
+      }
+      blocks.push({ raw, startLine, endLine: endLineExclusive - 1, kind, text });
+      current = [];
+    }
+  };
+
+  lines.forEach((line, i) => {
+    if (line.trimStart().startsWith('```')) {
+      inFence = !inFence;
+      current.push(line);
+      if (!inFence) flush(i + 1);
+      return;
+    }
+    if (!inFence && line.trim() === '') {
+      flush(i);
+      startLine = i + 1;
+      return;
+    }
+    if (!current.length) startLine = i;
+    current.push(line);
+  });
+  flush(lines.length);
+
+  return blocks;
+}
+
+/** Extract { level, text, line } for headings — used by the admin outline and TOC. */
+export function getHeadings(content) {
+  return content
+    .split('\n')
+    .map((line, i) => ({ line, i }))
+    .filter(({ line }) => /^#{1,6}\s+/.test(line))
+    .map(({ line, i }) => {
+      const m = line.match(/^(#{1,6})\s+(.*)$/);
+      return { level: m[1].length, text: m[2].trim(), line: i };
+    });
+}
+
+/**
+ * Move the image block at imageBlockIndex to just before targetBlockIndex.
+ * Returns the rewritten content string.
+ */
+export function moveBlock(content, fromIndex, toIndex) {
+  const blocks = splitBlocks(content);
+  if (fromIndex < 0 || fromIndex >= blocks.length) return content;
+  if (toIndex < 0) toIndex = 0;
+  if (toIndex >= blocks.length) toIndex = blocks.length - 1;
+  if (fromIndex === toIndex) return content;
+
+  const from = blocks[fromIndex];
+  // Remove the source block, then re-derive indices on the shortened list
+  const remaining = blocks.filter((_, i) => i !== fromIndex);
+  let target;
+  if (toIndex > fromIndex) {
+    // After removal the block that was at toIndex sits at toIndex-1; insert AFTER it
+    target = remaining[Math.min(toIndex - 1, remaining.length - 1)];
+  } else {
+    target = remaining[toIndex];
+  }
+  if (!target) return content;
+
+  const lines = content.split('\n');
+  // Replace source block lines with a single marker to splice cleanly
+  const removed = [...lines];
+  removed.splice(from.startLine, from.endLine - from.startLine + 1);
+  // Compute target start line after removal
+  let targetStart = target.startLine;
+  if (target.startLine > from.startLine) {
+    targetStart -= from.endLine - from.startLine + 1;
+  }
+  // Insert before the target block; if target is a heading, also keep a blank line after
+  const insertLines = [...from.raw.split('\n'), ''];
+  removed.splice(targetStart, 0, ...insertLines);
+  return removed.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
+}

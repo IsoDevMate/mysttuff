@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Trash2, Plus, Upload } from 'lucide-react';
+import { Trash2, Plus, Upload, X, Film } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 import { api } from '../api';
 import toast from 'react-hot-toast';
@@ -15,8 +15,9 @@ const Gallery = () => {
     const [newItem, setNewItem] = useState({
         title: '',
         description: '',
-        type: 'image',
+        type: 'photo',
         image_url: '',
+        media: [],
         date: new Date().toISOString().split('T')[0]
     });
 
@@ -35,14 +36,31 @@ const Gallery = () => {
         }
     };
 
-    const handleImageUploaded = (imageUrl) => {
-        setNewItem(prev => ({ ...prev, image_url: imageUrl }));
-        toast.success('Image uploaded');
+    const handleMediaUploaded = (url, media) => {
+        setNewItem(prev => {
+            const kind = media?.isVideo ? 'video' : 'image';
+            const mediaList = [...(prev.media || []), { url, type: kind }];
+            return { ...prev, media: mediaList, image_url: prev.image_url || url };
+        });
+        toast.success('Uploaded — add as many images/videos as you like');
+    };
+
+    const removeMedia = (index) => {
+        setNewItem(prev => {
+            const mediaList = prev.media.filter((_, i) => i !== index);
+            return {
+                ...prev,
+                media: mediaList,
+                image_url: prev.image_url && mediaList.some(m => m.url === prev.image_url)
+                    ? prev.image_url
+                    : mediaList[0]?.url || '',
+            };
+        });
     };
 
     const addGalleryItem = async () => {
-        if (!newItem.title || !newItem.image_url) {
-            toast.error('Title and image are required');
+        if (!newItem.title || !(newItem.media.length || newItem.image_url)) {
+            toast.error('Title and at least one image or video are required');
             return;
         }
 
@@ -52,8 +70,9 @@ const Gallery = () => {
             setNewItem({
                 title: '',
                 description: '',
-                type: 'image',
+                type: 'photo',
                 image_url: '',
+                media: [],
                 date: new Date().toISOString().split('T')[0]
             });
             setShowAddForm(false);
@@ -126,18 +145,42 @@ const Gallery = () => {
                         </div>
 
                         <div>
-                            <Label>Upload Image</Label>
-                            <ImageUpload onUploaded={handleImageUploaded} />
+                            <Label>Upload media (images & videos, multiple allowed)</Label>
+                            <ImageUpload
+                                onUploaded={handleMediaUploaded}
+                                allowVideos
+                                openCropOnSelect
+                            />
                         </div>
 
-                        {newItem.image_url && (
+                        {newItem.media.length > 0 && (
                             <div>
-                                <Label>Preview</Label>
-                                <img
-                                    src={newItem.image_url}
-                                    alt="Preview"
-                                    className="w-full h-32 object-cover rounded-lg"
-                                />
+                                <Label>Media ({newItem.media.length})</Label>
+                                <div className="grid grid-cols-3 md:grid-cols-5 gap-2 mt-2">
+                                    {newItem.media.map((m, i) => (
+                                        <div key={i} className="relative group rounded-lg overflow-hidden border">
+                                            {m.type === 'video' ? (
+                                                <div className="w-full h-20 bg-muted flex items-center justify-center">
+                                                    <Film className="h-6 w-6 text-muted-foreground" />
+                                                </div>
+                                            ) : (
+                                                <img src={m.url} alt="" className="w-full h-20 object-cover" />
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => removeMedia(i)}
+                                                className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                            {i === 0 && (
+                                                <span className="absolute bottom-0 left-0 right-0 text-[10px] text-center bg-background/80">
+                                                    cover
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
 
@@ -160,6 +203,11 @@ const Gallery = () => {
                                 alt={item.title}
                                 className="w-full h-full object-cover"
                             />
+                            {(item.media && JSON.parse(item.media || '[]').some(m => m.type === 'video')) && (
+                                <span className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded flex items-center gap-1">
+                                    <Film className="h-3 w-3" /> video
+                                </span>
+                            )}
                             <Button
                                 variant="destructive"
                                 size="sm"

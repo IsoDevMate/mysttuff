@@ -4,12 +4,27 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Save, ArrowLeft, Eye, EyeOff, Upload, Columns } from 'lucide-react';
+import { Save, ArrowLeft, Eye, EyeOff, Upload, Columns, X, Keyboard, ListTree } from 'lucide-react';
 import MarkdownToolbar from './MarkdownToolbar';
 import { MarkdownPreview } from './MarkdownPreview';
 import ImageUpload from './ImageUpload';
+import ImageOrganizer from './ImageOrganizer';
+import ShortcutsModal from './ShortcutsModal';
 import { api } from '../api';
 import toast from 'react-hot-toast';
+import { insertAtCursor, wrapSelection, prefixLine } from '../utils/markdownEditor';
+
+// tags is stored as a JSON string in the DB — normalize to an array
+const parseTags = (raw) => {
+    if (Array.isArray(raw)) return raw;
+    if (!raw) return [];
+    try {
+        const v = JSON.parse(raw);
+        return Array.isArray(v) ? v : [];
+    } catch {
+        return String(raw).split(',').map(s => s.trim()).filter(Boolean);
+    }
+};
 
 const ArticleEditor = () => {
     const { id } = useParams();
@@ -18,6 +33,8 @@ const ArticleEditor = () => {
     const [viewMode, setViewMode] = useState('edit'); // 'edit' | 'preview' | 'split'
     const contentRef = useRef(null);
     const imageUploadRef = useRef(null);
+    const [showShortcuts, setShowShortcuts] = useState(false);
+    const [tagInput, setTagInput] = useState('');
     const [article, setArticle] = useState({
         title: '',
         slug: '',
@@ -25,7 +42,9 @@ const ArticleEditor = () => {
         excerpt: '',
         category: '',
         published: false,
-        image_url: ''
+        image_url: '',
+        tags: [],
+        show_toc: true
     });
 
     useEffect(() => {
@@ -40,7 +59,11 @@ const ArticleEditor = () => {
             const articles = await api.getArticles();
             const foundArticle = articles.find(a => a.id === id);
             if (foundArticle) {
-                setArticle(foundArticle);
+                setArticle({
+                    ...foundArticle,
+                    tags: parseTags(foundArticle.tags),
+                    show_toc: foundArticle.show_toc !== 0 && foundArticle.show_toc !== false,
+                });
             }
         } catch (error) {
             toast.error('Failed to load article');
@@ -67,6 +90,83 @@ const ArticleEditor = () => {
             setArticle(prev => ({ ...prev, content: newContent(prev.content) }));
         } else {
             setArticle(prev => ({ ...prev, content: newContent }));
+        }
+    };
+
+    // ─── Tags ────────────────────────────────────────────────────────────────
+    const addTag = () => {
+        const t = tagInput.trim().toLowerCase();
+        if (!t) return;
+        setArticle(prev => ({ ...prev, tags: prev.tags?.includes(t) ? prev.tags : [...(prev.tags || []), t] }));
+        setTagInput('');
+    };
+    const removeTag = (t) => setArticle(prev => ({ ...prev, tags: (prev.tags || []).filter(x => x !== t) }));
+
+    // ─── Formatting shortcuts (inside the editor textarea) ──────────────────
+    const applyEdit = (fn) => {
+        const el = contentRef.current;
+        if (!el) return;
+        const result = fn(el);
+        handleContentChange(result.newValue);
+        requestAnimationFrame(() => {
+            el.focus();
+            if (result.selectStart !== undefined) el.setSelectionRange(result.selectStart, result.selectEnd);
+            else if (result.cursorPos !== undefined) el.setSelectionRange(result.cursorPos, result.cursorPos);
+        });
+    };
+
+    const handleEditorKeyDown = (e) => {
+        const mod = e.metaKey || e.ctrlKey;
+        if (!mod) return;
+        const key = e.key.toLowerCase();
+        if (key === 'b') { e.preventDefault(); applyEdit(el => wrapSelection(el, '**', '**', 'bold text')); }
+        else if (key === 'i') { e.preventDefault(); applyEdit(el => wrapSelection(el, '_', '_', 'italic text')); }
+        else if (key === 'k') { e.preventDefault(); applyEdit(el => wrapSelection(el, '[', '](https://)', 'link text')); }
+        else if (key === 'e') { e.preventDefault(); applyEdit(el => wrapSelection(el, '`', '`', 'code')); }
+        else if (key === 'x' && e.shiftKey) { e.preventDefault(); applyEdit(el => wrapSelection(el, '~~', '~~', 'strikethrough')); }
+        else if (['1', '2', '3', '4'].includes(key)) { e.preventDefault(); applyEdit(el => prefixLine(el, '#'.repeat(Number(key)) + ' ')); }
+        else if (key === '8' && e.shiftKey) { e.preventDefault(); applyEdit(el => insertAtCursor(el, '\n- List item\n- List item\n')); }
+        else if (key === '7' && e.shiftKey) { e.preventDefault(); applyEdit(el => insertAtCursor(el, '\n1. First item\n2. Second item\n')); }
+        else if (key === 'u') { e.preventDefault(); imageUploadRef.current?.openPicker(); }
+    };
+
+    // ─── Global shortcuts (save / publish / cheat sheet) ─────────────────────
+    useEffect(() => {
+        const onKey = (e) => {
+            const mod = e.metaKey || e.ctrlKey;
+            if (!mod) {
+                if (e.key === '?') {
+                    const el = document.activeElement;
+                    const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+                    if (!typing) setShowShortcuts(v => !v);
+                }
+                return;
+            }
+            const key = e.key.toLowerCase();
+            if (key === 's' && e.shiftKey) { e.preventDefault(); handleSave(true); }
+            else if (key === 's') { e.preventDefault(); handleSave(false); }
+            else if (key === '/') { e.preventDefault(); setShowShortcuts(v => !v); }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    });
+
+    // ─── Paste / drag-drop files straight into the editor ────────────────────
+    const uploadAndInsert = (files) => {
+        const media = [...files].filter(f => f.type?.startsWith('image/') || f.type?.startsWith('video/'));
+        if (media.length) imageUploadRef.current?.uploadFiles(media, { insert: true, skipCrop: true });
+    };
+    const handleEditorPaste = (e) => {
+        const files = e.clipboardData?.files;
+        if (files?.length) {
+            e.preventDefault();
+            uploadAndInsert(files);
+        }
+    };
+    const handleEditorDrop = (e) => {
+        if (e.dataTransfer?.files?.length) {
+            e.preventDefault();
+            uploadAndInsert(e.dataTransfer.files);
         }
     };
 
@@ -114,6 +214,15 @@ const ArticleEditor = () => {
                         {id === 'new' ? 'New Article' : 'Edit Article'}
                     </h1>
                 </div>
+
+                {/* Shortcuts help */}
+                <button
+                    onClick={() => setShowShortcuts(true)}
+                    title="Keyboard shortcuts (Ctrl/⌘ + /)"
+                    className="p-2 rounded-lg border hover:bg-muted transition-colors"
+                >
+                    <Keyboard className="h-4 w-4" />
+                </button>
 
                 {/* View mode toggle */}
                 <div className="flex items-center border rounded-lg overflow-hidden">
@@ -222,6 +331,9 @@ const ArticleEditor = () => {
                                         id="content"
                                         value={article.content}
                                         onChange={(e) => handleContentChange(e.target.value)}
+                                        onKeyDown={handleEditorKeyDown}
+                                        onPaste={handleEditorPaste}
+                                        onDrop={handleEditorDrop}
                                         placeholder="Write in Markdown... Use the toolbar above for headings, quotes, code, tables, and images."
                                         className={`w-full p-3 border border-t-0 rounded-b-lg font-mono text-sm bg-background text-foreground ${
                                             isSplit ? 'h-[500px]' : 'h-96'
@@ -234,7 +346,21 @@ const ArticleEditor = () => {
                         <Card>
                             <CardHeader className="pb-3">
                                 <CardTitle className="text-base flex items-center gap-2">
-                                    <Upload className="h-4 w-4" /> Add Images
+                                    <ListTree className="h-4 w-4" /> Article structure &amp; image placement
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <ImageOrganizer
+                                    content={article.content}
+                                    onContentChange={handleContentChange}
+                                />
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-base flex items-center gap-2">
+                                    <Upload className="h-4 w-4" /> Add Media
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
@@ -243,10 +369,13 @@ const ArticleEditor = () => {
                                     onInsert={handleContentChange}
                                     onSetFeatured={(url) => setArticle(prev => ({ ...prev, image_url: url }))}
                                     textareaRef={contentRef}
+                                    autoInsert
+                                    allowVideos
                                 />
                                 <p className="text-xs text-muted-foreground mt-2">
-                                    Place your cursor in the article body, then click <strong>Insert at cursor</strong>.
-                                    Use <strong>Set as featured</strong> for the hero banner above the title — not inside the text.
+                                    Uploads <strong>auto-insert at your cursor</strong>. You can also paste
+                                    (<kbd className="px-1 bg-muted rounded">Ctrl/⌘+V</kbd>) or drag files straight into the
+                                    editor. Use <strong>Set as featured</strong> for the hero banner above the title.
                                 </p>
                             </CardContent>
                         </Card>
@@ -265,6 +394,34 @@ const ArticleEditor = () => {
                                             value={article.category}
                                             onChange={(e) => setArticle(prev => ({ ...prev, category: e.target.value }))}
                                             placeholder="e.g., Technology"
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="tags">Tags</Label>
+                                        <div className="flex flex-wrap gap-1.5 mb-2">
+                                            {(article.tags || []).map((t) => (
+                                                <span key={t} className="text-xs bg-muted px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                    {t}
+                                                    <button type="button" onClick={() => removeTag(t)} className="hover:text-red-500">
+                                                        <X className="h-3 w-3" />
+                                                    </button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <Input
+                                            id="tags"
+                                            value={tagInput}
+                                            onChange={(e) => setTagInput(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ',') {
+                                                    e.preventDefault();
+                                                    addTag();
+                                                } else if (e.key === 'Backspace' && !tagInput && article.tags?.length) {
+                                                    removeTag(article.tags[article.tags.length - 1]);
+                                                }
+                                            }}
+                                            onBlur={addTag}
+                                            placeholder="Add a tag and press Enter"
                                         />
                                     </div>
                                     <div>
@@ -299,6 +456,21 @@ const ArticleEditor = () => {
                                         />
                                         <Label htmlFor="published">Published</Label>
                                     </div>
+                                    <div className="flex items-start space-x-2">
+                                        <input
+                                            type="checkbox"
+                                            id="show_toc"
+                                            checked={article.show_toc !== false}
+                                            onChange={(e) => setArticle(prev => ({ ...prev, show_toc: e.target.checked }))}
+                                            className="rounded mt-1"
+                                        />
+                                        <div>
+                                            <Label htmlFor="show_toc">Auto table of contents</Label>
+                                            <p className="text-xs text-muted-foreground">
+                                                Builds a clickable TOC from your H2/H3 headings. Uncheck to hand-write your own inside the content.
+                                            </p>
+                                        </div>
+                                    </div>
                                 </CardContent>
                             </Card>
                         )}
@@ -330,7 +502,7 @@ const ArticleEditor = () => {
                                             className="h-8 text-sm"
                                         />
                                     </div>
-                                    <div className="flex items-end gap-2">
+                                    <div className="flex items-end gap-4">
                                         <label className="flex items-center gap-2 text-sm cursor-pointer">
                                             <input
                                                 type="checkbox"
@@ -338,6 +510,14 @@ const ArticleEditor = () => {
                                                 onChange={(e) => setArticle(prev => ({ ...prev, published: e.target.checked }))}
                                             />
                                             Published
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={article.show_toc !== false}
+                                                onChange={(e) => setArticle(prev => ({ ...prev, show_toc: e.target.checked }))}
+                                            />
+                                            Auto TOC
                                         </label>
                                     </div>
                                 </CardContent>
@@ -379,6 +559,8 @@ const ArticleEditor = () => {
                     </div>
                 )}
             </div>
+
+            <ShortcutsModal open={showShortcuts} onClose={() => setShowShortcuts(false)} />
         </div>
     );
 };

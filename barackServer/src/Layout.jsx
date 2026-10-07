@@ -48,6 +48,12 @@ export default function Layout({ children, currentPageName }) {
               writing
             </Link>
             <Link 
+              to={createPageUrl("Tags")} 
+              className={`hover:opacity-100 transition-opacity ${currentPageName === 'Tags' ? 'opacity-100' : 'opacity-60'}`}
+            >
+              tags
+            </Link>
+            <Link 
               to={createPageUrl("Gallery")} 
               className={`hover:opacity-100 transition-opacity ${currentPageName === 'Gallery' ? 'opacity-100' : 'opacity-60'}`}
             >
