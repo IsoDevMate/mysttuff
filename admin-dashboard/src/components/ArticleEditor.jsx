@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Save, ArrowLeft, Eye, EyeOff, Upload, Columns, X, Keyboard, ListTree } from 'lucide-react';
+import { Save, ArrowLeft, Eye, EyeOff, Upload, Columns, X, Keyboard, ListTree, Cloud, Check, CloudOff, Loader2 } from 'lucide-react';
 import MarkdownToolbar from './MarkdownToolbar';
 import { MarkdownPreview } from './MarkdownPreview';
 import ImageUpload from './ImageUpload';
@@ -26,6 +26,21 @@ const parseTags = (raw) => {
     }
 };
 
+// ─── Crash-safety draft (localStorage snapshot) ─────────────────────────────
+const draftKeyFor = (id) => `article-editor-draft-${id || 'new'}`;
+
+const EMPTY_ARTICLE = {
+    title: '',
+    slug: '',
+    content: '',
+    excerpt: '',
+    category: '',
+    published: false,
+    image_url: '',
+    tags: [],
+    show_toc: true
+};
+
 const ArticleEditor = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -35,21 +50,131 @@ const ArticleEditor = () => {
     const imageUploadRef = useRef(null);
     const [showShortcuts, setShowShortcuts] = useState(false);
     const [tagInput, setTagInput] = useState('');
-    const [article, setArticle] = useState({
-        title: '',
-        slug: '',
-        content: '',
-        excerpt: '',
-        category: '',
-        published: false,
-        image_url: '',
-        tags: [],
-        show_toc: true
-    });
+    // autosave state machine: 'idle' | 'saving' | 'saved' | 'error'
+    const [saveStatus, setSaveStatus] = useState('idle');
+    const [lastSavedAt, setLastSavedAt] = useState(null);
+    const [draftKey, setDraftKey] = useState(null); // set once the local article id is known
+    const [recoverableDraft, setRecoverableDraft] = useState(null); // pending crash-recovery snapshot
+    const [article, setArticleState] = useState({ ...EMPTY_ARTICLE });
+    const articleRef = useRef(article); // latest article for async callbacks
+    const autosaveTimerRef = useRef(null);
+    const serverSavedRef = useRef(null); // last payload successfully persisted to the server
+    const creatingRef = useRef(false); // guards against double-creating a new article
+
+    const setArticle = (updater) => {
+        setArticleState(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            articleRef.current = next;
+            return next;
+        });
+    };
+
+    // Instant crash-safety: snapshot to localStorage on every change (before any
+    // debounced server save). This is what survives a power cut mid-sentence.
+    useEffect(() => {
+        if (!draftKey || loading) return;
+        try {
+            localStorage.setItem(draftKey, JSON.stringify({
+                ...article,
+                savedAt: Date.now(),
+            }));
+        } catch {
+            /* storage full/blocked — server autosave is the fallback */
+        }
+    }, [article, draftKey, loading]);
+
+    // Debounced server autosave (drafts only — never publishes). Fires 2s after
+    // the last change, and only when there is something new to persist.
+    useEffect(() => {
+        if (!draftKey || loading) return;
+        if (!article.title?.trim() && !article.content?.trim()) return;
+        if (JSON.stringify(article) === JSON.stringify(serverSavedRef.current)) return;
+        clearTimeout(autosaveTimerRef.current);
+        setSaveStatus('idle');
+        autosaveTimerRef.current = setTimeout(() => {
+            autosaveToServer();
+        }, 2000);
+        return () => clearTimeout(autosaveTimerRef.current);
+    }, [article, draftKey, loading]);
+
+    const autosaveToServer = useCallback(async () => {
+        const current = articleRef.current;
+        if (!current) return;
+        if (JSON.stringify(current) === JSON.stringify(serverSavedRef.current)) return;
+        // New articles: create once, then flip to update mode — user stays in the editor
+        if (!draftKey || draftKey.endsWith('new')) {
+            if (creatingRef.current) return;
+            if (!current.title?.trim() && !current.content?.trim()) return;
+            creatingRef.current = true;
+            try {
+                setSaveStatus('saving');
+                const created = await api.createArticle({ ...current, published: current.published || false });
+                serverSavedRef.current = current;
+                const newId = created?.id;
+                if (newId) {
+                    const oldKey = draftKey;
+                    setDraftKey(draftKeyFor(newId));
+                    // Carry the real id on the local object so later saves update, not re-create
+                    setArticle(prev => ({ ...prev, id: newId }));
+                    // Move the localStorage snapshot to the new id so recovery stays consistent
+                    try {
+                        const snap = localStorage.getItem(oldKey);
+                        if (snap) {
+                            localStorage.setItem(draftKeyFor(newId), snap);
+                            localStorage.removeItem(oldKey);
+                        }
+                    } catch { /* noop */ }
+                    window.history.replaceState(null, '', `/articles/${newId}`);
+                }
+                setSaveStatus('saved');
+                setLastSavedAt(Date.now());
+            } catch {
+                setSaveStatus('error');
+            } finally {
+                creatingRef.current = false;
+            }
+            return;
+        }
+        // Existing article: silent draft update
+        const articleId = draftKey.replace('article-editor-draft-', '');
+        try {
+            setSaveStatus('saving');
+            await api.updateArticle(articleId, { ...current, published: current.published || false });
+            serverSavedRef.current = current;
+            setSaveStatus('saved');
+            setLastSavedAt(Date.now());
+        } catch {
+            setSaveStatus('error');
+        }
+    }, [draftKey]);
+
+    // Warn before leaving with unsaved server changes (localStorage snapshot still protects data)
+    useEffect(() => {
+        const onBeforeUnload = (e) => {
+            if (saveStatus === 'saving') {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        };
+        window.addEventListener('beforeunload', onBeforeUnload);
+        return () => window.removeEventListener('beforeunload', onBeforeUnload);
+    }, [saveStatus]);
 
     useEffect(() => {
         if (id && id !== 'new') {
             loadArticle();
+        } else {
+            setDraftKey(draftKeyFor('new'));
+            // Offer recovery of a brand-new article that was never server-saved
+            try {
+                const raw = localStorage.getItem(draftKeyFor('new'));
+                if (raw) {
+                    const snap = JSON.parse(raw);
+                    if ((snap.title?.trim() || snap.content?.trim())) {
+                        setRecoverableDraft({ key: draftKeyFor('new'), snapshot: snap });
+                    }
+                }
+            } catch { /* corrupt snapshot — ignore */ }
         }
     }, [id]);
 
@@ -58,18 +183,65 @@ const ArticleEditor = () => {
             setLoading(true);
             const articles = await api.getArticles();
             const foundArticle = articles.find(a => a.id === id);
-            if (foundArticle) {
-                setArticle({
+            const base = foundArticle
+                ? {
                     ...foundArticle,
                     tags: parseTags(foundArticle.tags),
                     show_toc: foundArticle.show_toc !== 0 && foundArticle.show_toc !== false,
-                });
+                }
+                : {
+                    title: '', slug: '', content: '', excerpt: '', category: '',
+                    published: false, image_url: '', tags: [], show_toc: true,
+                };
+            serverSavedRef.current = base;
+
+            // Crash recovery: is there a newer local snapshot with actual changes?
+            const key = draftKeyFor(id);
+            let recovered = null;
+            try {
+                const raw = localStorage.getItem(key);
+                if (raw) {
+                    const snap = JSON.parse(raw);
+                    const serverTime = foundArticle?.updated_at ? new Date(foundArticle.updated_at + 'Z').getTime() : 0;
+                    const differs = JSON.stringify({ ...snap, savedAt: undefined }) !== JSON.stringify({ ...base, savedAt: undefined });
+                    if (snap.savedAt && snap.savedAt > serverTime + 1000 && differs) recovered = snap;
+                }
+            } catch { /* corrupt snapshot — ignore */ }
+
+            setDraftKey(key);
+            if (recovered) {
+                setArticle(base); // start from server version; restore on confirm
+                setRecoverableDraft({ key, snapshot: recovered });
+            } else {
+                setArticle(base);
+                try { localStorage.removeItem(key); } catch { /* noop */ }
             }
         } catch (error) {
             toast.error('Failed to load article');
         } finally {
             setLoading(false);
         }
+    };
+
+    const restoreDraft = () => {
+        if (!recoverableDraft) return;
+        const snap = recoverableDraft.snapshot;
+        const { savedAt, ...rest } = snap;
+        setArticle(prev => ({
+            ...prev,
+            ...rest,
+            tags: parseTags(rest.tags),
+            show_toc: rest.show_toc !== 0 && rest.show_toc !== false,
+        }));
+        setRecoverableDraft(null);
+        toast.success('Recovered your unsaved changes');
+    };
+
+    const discardDraft = () => {
+        if (recoverableDraft) {
+            try { localStorage.removeItem(recoverableDraft.key); } catch { /* noop */ }
+        }
+        setRecoverableDraft(null);
     };
 
     const generateSlug = (title) => {
@@ -171,20 +343,40 @@ const ArticleEditor = () => {
     };
 
     const handleSave = async (publish = false) => {
-        if (!article.title.trim()) {
+        const current = articleRef.current || article;
+        if (!current.title?.trim()) {
             toast.error('Title is required');
             return;
         }
+        clearTimeout(autosaveTimerRef.current);
         try {
             setLoading(true);
-            const articleData = { ...article, published: publish };
-            if (id && id !== 'new') {
-                await api.updateArticle(id, articleData);
+            const articleData = { ...current, published: publish };
+            const articleId = (id && id !== 'new') ? id : current.id;
+            if (articleId) {
+                const updated = await api.updateArticle(articleId, articleData);
+                serverSavedRef.current = current;
+                setSaveStatus('saved');
+                setLastSavedAt(Date.now());
                 toast.success(publish ? 'Article published' : 'Draft saved');
+                if (updated?.id && updated.id !== articleId) {
+                    window.history.replaceState(null, '', `/articles/${updated.id}`);
+                }
+                // Keep the editor open — no navigation on save
             } else {
-                await api.createArticle(articleData);
+                const created = await api.createArticle(articleData);
+                serverSavedRef.current = current;
+                setSaveStatus('saved');
+                setLastSavedAt(Date.now());
                 toast.success(publish ? 'Article published' : 'Draft saved');
-                navigate('/articles');
+                if (created?.id) {
+                    const newId = created.id;
+                    setDraftKey(draftKeyFor(newId));
+                    setArticle(prev => ({ ...prev, id: newId }));
+                    try { localStorage.removeItem(draftKeyFor('new')); } catch { /* noop */ }
+                    // Stay in the editor — just swap the URL to the real article id
+                    window.history.replaceState(null, '', `/articles/${newId}`);
+                }
             }
         } catch (error) {
             toast.error('Failed to save article');
@@ -253,7 +445,34 @@ const ArticleEditor = () => {
                 </div>
 
                 {/* Save/Publish actions */}
-                <div className="flex space-x-2">
+                <div className="flex items-center space-x-3">
+                    {/* Autosave status indicator */}
+                    <span
+                        className="text-xs text-muted-foreground flex items-center gap-1.5"
+                        title={lastSavedAt ? `Autosaved at ${new Date(lastSavedAt).toLocaleTimeString()}` : 'Autosave keeps your work safe as you type'}
+                    >
+                        {saveStatus === 'saving' && (
+                            <>
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+                            </>
+                        )}
+                        {saveStatus === 'saved' && (
+                            <>
+                                <Check className="h-3.5 w-3.5 text-green-600" />
+                                Saved {lastSavedAt ? new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                            </>
+                        )}
+                        {saveStatus === 'error' && (
+                            <>
+                                <CloudOff className="h-3.5 w-3.5 text-red-500" /> Offline — retrying
+                            </>
+                        )}
+                        {saveStatus === 'idle' && (
+                            <>
+                                <Cloud className="h-3.5 w-3.5 opacity-50" /> Autosave on
+                            </>
+                        )}
+                    </span>
                     <Button
                         variant="outline"
                         onClick={() => handleSave(false)}
@@ -272,6 +491,21 @@ const ArticleEditor = () => {
                     </Button>
                 </div>
             </div>
+
+            {/* Crash-recovery banner */}
+            {recoverableDraft && (
+                <div className="flex items-center justify-between gap-3 border border-yellow-300 bg-yellow-50 text-yellow-900 rounded-lg px-4 py-2.5 text-sm">
+                    <span>
+                        We found unsaved work from a previous session
+                        {recoverableDraft.snapshot.savedAt &&
+                            ` (${new Date(recoverableDraft.snapshot.savedAt).toLocaleString()})`}. Restore it?
+                    </span>
+                    <span className="flex gap-2 shrink-0">
+                        <Button size="sm" variant="outline" onClick={discardDraft}>Discard</Button>
+                        <Button size="sm" onClick={restoreDraft}>Restore</Button>
+                    </span>
+                </div>
+            )}
 
             <div className={`grid gap-6 ${isSplit ? 'lg:grid-cols-2' : 'lg:grid-cols-3'}`}>
                 {/* Editor column — hidden in preview mode */}

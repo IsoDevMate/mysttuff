@@ -8,7 +8,7 @@ const GROUPS = [
   {
     label: 'Document',
     shortcuts: [
-      { keys: [`${MOD}`, 'S'], action: 'Save draft' },
+      { keys: [`${MOD}`, 'S'], action: 'Save draft (stays on page)' },
       { keys: [`${MOD}`, '⇧', 'S'], action: 'Publish / update' },
       { keys: [`${MOD}`, '/'], action: 'Toggle this cheat sheet' },
     ],
@@ -89,6 +89,11 @@ export default function ShortcutsModal({ open, onClose }) {
             </div>
           ))}
           <p className="text-xs text-muted-foreground border-t pt-3">
+            <strong>Autosave is on:</strong> your work is snapshotted locally as you type and
+            saved to the server 2 seconds after you stop. Even if your PC dies mid-sentence,
+            you'll be offered to recover it next time you open the editor.
+          </p>
+          <p className="text-xs text-muted-foreground">
             Tip: you can also paste or drag image files straight into the editor — they upload to
             R2 and insert at your cursor automatically.
           </p>
