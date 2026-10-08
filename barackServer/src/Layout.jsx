@@ -1,9 +1,21 @@
 import { Link } from "react-router-dom";
+import { useState } from "react";
 import { createPageUrl } from "./lib/utils";
 import ThemeCustomizer from "./components/settings/ThemeCustomizer";
 import DesignPresets from "./components/settings/DesignPresets";
+import { Menu, X } from "lucide-react";
+
+const NAV_LINKS = [
+  { label: "home", page: "Home" },
+  { label: "writing", page: "Blog" },
+  { label: "tags", page: "Tags" },
+  { label: "gallery", page: "Gallery" },
+  { label: "links", page: "Links" },
+];
 
 export default function Layout({ children, currentPageName }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-color, #FAF3E8)', color: 'var(--text-color, #292524)' }}>
       <style>{`
@@ -34,43 +46,57 @@ export default function Layout({ children, currentPageName }) {
             ~
           </Link>
           
-          <div className="flex items-center gap-4 font-body text-sm">
-            <Link 
-              to={createPageUrl("Home")} 
-              className={`hover:opacity-100 transition-opacity ${currentPageName === 'Home' ? 'opacity-100' : 'opacity-60'}`}
-            >
-              home
-            </Link>
-            <Link 
-              to={createPageUrl("Blog")} 
-              className={`hover:opacity-100 transition-opacity ${currentPageName === 'Blog' ? 'opacity-100' : 'opacity-60'}`}
-            >
-              writing
-            </Link>
-            <Link 
-              to={createPageUrl("Tags")} 
-              className={`hover:opacity-100 transition-opacity ${currentPageName === 'Tags' ? 'opacity-100' : 'opacity-60'}`}
-            >
-              tags
-            </Link>
-            <Link 
-              to={createPageUrl("Gallery")} 
-              className={`hover:opacity-100 transition-opacity ${currentPageName === 'Gallery' ? 'opacity-100' : 'opacity-60'}`}
-            >
-              gallery
-            </Link>
-            <Link 
-              to={createPageUrl("Links")} 
-              className={`hover:opacity-100 transition-opacity ${currentPageName === 'Links' ? 'opacity-100' : 'opacity-60'}`}
-            >
-              links
-            </Link>
+          {/* Desktop nav */}
+          <div className="hidden md:flex items-center gap-4 font-body text-sm">
+            {NAV_LINKS.map(({ label, page }) => (
+              <Link
+                key={page}
+                to={createPageUrl(page)}
+                className={`hover:opacity-100 transition-opacity ${currentPageName === page ? 'opacity-100' : 'opacity-60'}`}
+              >
+                {label}
+              </Link>
+            ))}
             <div className="flex items-center gap-1 border-l pl-4" style={{ borderColor: 'var(--text-color, #292524)' + '20' }}>
               <DesignPresets />
               <ThemeCustomizer />
             </div>
           </div>
+
+          {/* Mobile hamburger */}
+          <button
+            className="md:hidden p-2 -mr-2"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          >
+            {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
+
+        {/* Mobile menu */}
+        {menuOpen && (
+          <div className="md:hidden border-t px-6 py-3 font-body text-sm" style={{ borderColor: 'var(--text-color, #292524)' + '15' }}>
+            <div className="flex flex-col">
+              {NAV_LINKS.map(({ label, page }) => (
+                <Link
+                  key={page}
+                  to={createPageUrl(page)}
+                  onClick={() => setMenuOpen(false)}
+                  className={`py-2.5 border-b last:border-b-0 transition-opacity ${
+                    currentPageName === page ? 'opacity-100 font-medium' : 'opacity-60'
+                  }`}
+                  style={{ borderColor: 'var(--text-color, #292524)' + '10' }}
+                >
+                  {label}
+                </Link>
+              ))}
+              <div className="flex items-center gap-1 pt-3">
+                <DesignPresets />
+                <ThemeCustomizer />
+              </div>
+            </div>
+          </div>
+        )}
       </nav>
       
       <main className="pt-20">

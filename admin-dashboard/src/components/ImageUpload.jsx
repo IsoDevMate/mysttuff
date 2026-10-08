@@ -1,6 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, X, Copy, CheckCircle, Crop, Film } from 'lucide-react';
+import { Upload, X, Copy, CheckCircle, Crop, Film, Pencil } from 'lucide-react';
 import { api } from '../api';
 import toast from 'react-hot-toast';
 import ImageCropModal from './ImageCropModal';
@@ -22,6 +22,7 @@ const MediaUpload = forwardRef(function MediaUpload(
     onInsert,
     onSetFeatured,
     onUploaded,
+    onReplaced,
     textareaRef,
     openCropOnSelect = true,
     autoInsert = false,
@@ -35,6 +36,8 @@ const MediaUpload = forwardRef(function MediaUpload(
   const [copied, setCopied] = useState(null);
   // Queue of image files waiting to pass through the crop modal
   const [cropQueue, setCropQueue] = useState([]);
+  // URL string while re-cropping an already-uploaded image (edit mode)
+  const [editingUrl, setEditingUrl] = useState(null);
   const fileInputRef = useRef(null);
   const uploadingRef = useRef(false);
   const lastInsertRef = useRef(autoInsert);
@@ -142,6 +145,26 @@ const MediaUpload = forwardRef(function MediaUpload(
     uploadingRef.current = false;
   };
 
+  /** Re-crop an already-uploaded image and replace it with the new version. */
+  const handleEditConfirm = async (croppedFile) => {
+    const originalUrl = editingUrl;
+    setEditingUrl(null);
+    setUploading(true);
+    try {
+      const upload = await api.uploadFile(croppedFile);
+      // Swap the old URL for the new one everywhere it was used
+      setUploadedImages((prev) =>
+        prev.map((img) => (img.url === originalUrl ? { ...img, url: upload.url } : img))
+      );
+      if (onReplaced) onReplaced(originalUrl, upload.url);
+      toast.success('Image updated');
+    } catch (error) {
+      toast.error('Re-upload failed: ' + error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const accept = allowVideos ? { ...IMAGE_ACCEPT, ...VIDEO_ACCEPT } : IMAGE_ACCEPT;
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -178,6 +201,14 @@ const MediaUpload = forwardRef(function MediaUpload(
           onConfirm={handleCropConfirm}
           onSkip={handleCropSkip}
           onCancel={handleCropCancel}
+        />
+      )}
+
+      {editingUrl && (
+        <ImageCropModal
+          file={editingUrl}
+          onConfirm={handleEditConfirm}
+          onCancel={() => setEditingUrl(null)}
         />
       )}
 
@@ -241,6 +272,15 @@ const MediaUpload = forwardRef(function MediaUpload(
                     className="w-full text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
                   >
                     Set as featured
+                  </button>
+                )}
+                {!image.isVideo && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingUrl(image.url)}
+                    className="w-full text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700 flex items-center justify-center gap-1"
+                  >
+                    <Pencil className="h-3 w-3" /> Edit / re-crop
                   </button>
                 )}
                 <button

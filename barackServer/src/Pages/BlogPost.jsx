@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
+import { parseTagEntries, tagHref } from "@/lib/tags";
 import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Clock, ListTree } from "lucide-react";
@@ -17,17 +18,6 @@ const slugify = (text) =>
 
 const textOf = (children) =>
   Array.isArray(children) ? children.map(textOf).join("") : String(children ?? "");
-
-const parseTags = (raw) => {
-  if (Array.isArray(raw)) return raw;
-  if (!raw) return [];
-  try {
-    const v = JSON.parse(raw);
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-};
 
 // H2/H3 headings from the markdown source (fence-aware) — powers the auto TOC
 const getTocItems = (markdown) => {
@@ -60,7 +50,7 @@ export default function BlogPost() {
     queryFn: () => blogAPI.getSocialLinks(),
   });
 
-  const tags = parseTags(post?.tags);
+  const tags = parseTagEntries(post?.tags);
   const tocItems = useMemo(
     () => (post && post.show_toc !== 0 ? getTocItems(post.content) : []),
     [post]
@@ -179,12 +169,14 @@ export default function BlogPost() {
               <div className="flex flex-wrap gap-2 mb-5">
                 {tags.map((tag) => (
                   <Link
-                    key={tag}
-                    to={createPageUrl(`Blog?tag=${encodeURIComponent(tag)}`)}
+                    key={tag.name}
+                    to={tagHref(tag, createPageUrl)}
+                    target={tag.url ? "_blank" : undefined}
+                    rel={tag.url ? "noopener noreferrer" : undefined}
                     className="font-body text-xs lowercase opacity-50 hover:opacity-100 transition-opacity border px-2 py-0.5 rounded-full"
                     style={{ borderColor: 'var(--text-color, #292524)' + '30' }}
                   >
-                    #{tag}
+                    #{tag.name}
                   </Link>
                 ))}
               </div>

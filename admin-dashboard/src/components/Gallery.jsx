@@ -3,23 +3,38 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Trash2, Plus, Upload, X, Film } from 'lucide-react';
+import { Trash2, Plus, Upload, X, Film, Pencil } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 import { api } from '../api';
 import toast from 'react-hot-toast';
+
+const parseMedia = (raw) => {
+    if (Array.isArray(raw)) return raw;
+    if (!raw) return [];
+    try {
+        const v = JSON.parse(raw);
+        return Array.isArray(v) ? v : [];
+    } catch {
+        return [];
+    }
+};
+
+const emptyItem = () => ({
+    title: '',
+    description: '',
+    type: 'photo',
+    image_url: '',
+    media: [],
+    date: new Date().toISOString().split('T')[0]
+});
 
 const Gallery = () => {
     const [gallery, setGallery] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showAddForm, setShowAddForm] = useState(false);
-    const [newItem, setNewItem] = useState({
-        title: '',
-        description: '',
-        type: 'photo',
-        image_url: '',
-        media: [],
-        date: new Date().toISOString().split('T')[0]
-    });
+    const [newItem, setNewItem] = useState(emptyItem());
+    // Edit mode: id of the gallery item being edited (form above is reused)
+    const [editingId, setEditingId] = useState(null);
 
     useEffect(() => {
         loadGallery();
@@ -58,6 +73,34 @@ const Gallery = () => {
         });
     };
 
+    const startEdit = (item) => {
+        setEditingId(item.id);
+        setShowAddForm(true);
+        setNewItem({
+            title: item.title || '',
+            description: item.description || '',
+            type: item.type || 'photo',
+            image_url: item.image_url || '',
+            media: parseMedia(item.media),
+            date: item.date ? String(item.date).split('T')[0] : new Date().toISOString().split('T')[0],
+        });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const cancelEdit = () => {
+        setEditingId(null);
+        setShowAddForm(false);
+        setNewItem(emptyItem());
+    };
+
+    const replaceMediaUrl = (oldUrl, newUrl) => {
+        setNewItem(prev => ({
+            ...prev,
+            media: prev.media.map(m => (m.url === oldUrl ? { ...m, url: newUrl } : m)),
+            image_url: prev.image_url === oldUrl ? newUrl : prev.image_url,
+        }));
+    };
+
     const addGalleryItem = async () => {
         if (!newItem.title || !(newItem.media.length || newItem.image_url)) {
             toast.error('Title and at least one image or video are required');
@@ -65,20 +108,18 @@ const Gallery = () => {
         }
 
         try {
-            const item = await api.createGalleryItem(newItem);
-            setGallery(prev => [item, ...prev]);
-            setNewItem({
-                title: '',
-                description: '',
-                type: 'photo',
-                image_url: '',
-                media: [],
-                date: new Date().toISOString().split('T')[0]
-            });
-            setShowAddForm(false);
-            toast.success('Gallery item added');
+            if (editingId) {
+                const updated = await api.updateGalleryItem(editingId, newItem);
+                setGallery(prev => prev.map(item => (item.id === editingId ? updated : item)));
+                toast.success('Gallery item updated');
+            } else {
+                const item = await api.createGalleryItem(newItem);
+                setGallery(prev => [item, ...prev]);
+                toast.success('Gallery item added');
+            }
+            cancelEdit();
         } catch (error) {
-            toast.error('Failed to add gallery item');
+            toast.error(editingId ? 'Failed to update gallery item' : 'Failed to add gallery item');
         }
     };
 
@@ -100,7 +141,7 @@ const Gallery = () => {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <h1 className="text-3xl font-bold">Gallery</h1>
-                <Button onClick={() => setShowAddForm(!showAddForm)}>
+                <Button onClick={() => (showAddForm ? cancelEdit() : setShowAddForm(true))}>
                     <Plus className="mr-2 h-4 w-4" />
                     Add Item
                 </Button>
@@ -109,7 +150,14 @@ const Gallery = () => {
             {showAddForm && (
                 <Card>
                     <CardHeader>
-                        <CardTitle>Add Gallery Item</CardTitle>
+                        <CardTitle>
+                            {editingId ? 'Edit Gallery Item' : 'Add Gallery Item'}
+                            {editingId && (
+                                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                                    editing “{gallery.find(g => g.id === editingId)?.title}”
+                                </span>
+                            )}
+                        </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
@@ -148,6 +196,7 @@ const Gallery = () => {
                             <Label>Upload media (images & videos, multiple allowed)</Label>
                             <ImageUpload
                                 onUploaded={handleMediaUploaded}
+                                onReplaced={replaceMediaUrl}
                                 allowVideos
                                 openCropOnSelect
                             />
@@ -185,8 +234,10 @@ const Gallery = () => {
                         )}
 
                         <div className="flex space-x-2">
-                            <Button onClick={addGalleryItem}>Add to Gallery</Button>
-                            <Button variant="outline" onClick={() => setShowAddForm(false)}>
+                            <Button onClick={addGalleryItem}>
+                                {editingId ? 'Save Changes' : 'Add to Gallery'}
+                            </Button>
+                            <Button variant="outline" onClick={cancelEdit}>
                                 Cancel
                             </Button>
                         </div>
@@ -203,19 +254,28 @@ const Gallery = () => {
                                 alt={item.title}
                                 className="w-full h-full object-cover"
                             />
-                            {(item.media && JSON.parse(item.media || '[]').some(m => m.type === 'video')) && (
+                            {(parseMedia(item.media).some(m => m.type === 'video')) && (
                                 <span className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded flex items-center gap-1">
                                     <Film className="h-3 w-3" /> video
                                 </span>
                             )}
-                            <Button
-                                variant="destructive"
-                                size="sm"
-                                className="absolute top-2 right-2"
-                                onClick={() => deleteGalleryItem(item.id)}
-                            >
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <div className="absolute top-2 right-2 flex gap-1">
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => startEdit(item)}
+                                    title="Edit this item"
+                                >
+                                    <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => deleteGalleryItem(item.id)}
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </div>
                         </div>
                         <CardContent className="p-4">
                             <h3 className="font-semibold mb-2">{item.title}</h3>

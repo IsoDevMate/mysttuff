@@ -1,8 +1,10 @@
 import React, { useMemo, useState, useRef, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Film, Layers, Play } from "lucide-react";
+import { ChevronLeft, ChevronRight, Film, Layers, Play, ArrowLeft } from "lucide-react";
+import { createPageUrl } from "@/lib/utils";
 import { format } from "date-fns";
 import GalleryHero from "@/components/gallery/GalleryHero";
 import MediaLightbox from "@/components/gallery/MediaLightbox";
@@ -77,6 +79,17 @@ export default function Gallery() {
 
   return (
     <div className="pb-24">
+      {/* Back navigation — sticky so it's reachable even mid-scroll on the hero */}
+      <div className="sticky top-20 z-30 max-w-6xl mx-auto px-4 sm:px-6 pt-3">
+        <Link
+          to={createPageUrl("Home")}
+          className="inline-flex items-center gap-1.5 font-body text-sm opacity-60 hover:opacity-100 transition-opacity bg-[var(--bg-color,#FAF3E8)]/80 backdrop-blur-sm px-3 py-1.5 rounded-full border"
+          style={{ borderColor: "var(--text-color, #292524)" + "20" }}
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> back home
+        </Link>
+      </div>
+
       {/* Netflix-style hero — purely decorative */}
       <GalleryHero
         slides={heroSlides}
@@ -128,7 +141,7 @@ export default function Gallery() {
                       {typeLabels[type] || type}
                       <span className="font-body text-xs opacity-40 ml-2">{typeItems.length}</span>
                     </h3>
-                    <div className="flex gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                    <div className="flex gap-1 opacity-100 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity">
                       <button
                         onClick={() => scrollRow(type, -1)}
                         aria-label={`Scroll ${typeLabels[type] || type} back`}
@@ -148,7 +161,7 @@ export default function Gallery() {
 
                   <div
                     data-row-direction={type}
-                    className="flex gap-4 overflow-x-auto pb-3 snap-x"
+                    className="flex gap-3 sm:gap-4 overflow-x-auto pb-3 snap-x"
                     style={{ scrollbarWidth: "thin" }}
                   >
                     {typeItems.flatMap((item) =>
@@ -158,7 +171,7 @@ export default function Gallery() {
                           <button
                             key={`${item.id}-${mediaIndex}`}
                             onClick={() => openLightbox(item, mediaIndex)}
-                            className="relative shrink-0 w-56 sm:w-64 aspect-video rounded-lg overflow-hidden snap-start bg-current/5 group/tile"
+                            className="relative shrink-0 w-44 xs:w-52 sm:w-64 aspect-video rounded-lg overflow-hidden snap-start bg-current/5 group/tile"
                             aria-label={`${item.title}${mediaIndex > 0 ? ` — media ${mediaIndex + 1}` : ""}`}
                           >
                             {video ? (
@@ -210,7 +223,7 @@ export default function Gallery() {
 
         {/* ─── Instagram-style grid — everything, image first ─── */}
         {!isLoading && normalized.length > 0 && (
-          <section className="pt-20">
+          <section className="pt-12 sm:pt-20">
             <h2 className="font-serif-display text-2xl font-bold mb-8">Everything</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
               {normalized.flatMap((item, idx) =>

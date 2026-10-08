@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Save, ArrowLeft, Eye, EyeOff, Upload, Columns, X, Keyboard, ListTree, Cloud, Check, CloudOff, Loader2 } from 'lucide-react';
+import { Save, ArrowLeft, Eye, EyeOff, Upload, Columns, X, Keyboard, ListTree, Cloud, Check, CloudOff, Loader2, Link2, Plus } from 'lucide-react';
 import MarkdownToolbar from './MarkdownToolbar';
 import { MarkdownPreview } from './MarkdownPreview';
 import ImageUpload from './ImageUpload';
@@ -14,7 +14,8 @@ import { api } from '../api';
 import toast from 'react-hot-toast';
 import { insertAtCursor, wrapSelection, prefixLine } from '../utils/markdownEditor';
 
-// tags is stored as a JSON string in the DB — normalize to an array
+// tags is stored as a JSON string in the DB — normalize to an array.
+// Entries may be plain strings or { name, url } objects (custom tag links).
 const parseTags = (raw) => {
     if (Array.isArray(raw)) return raw;
     if (!raw) return [];
@@ -24,6 +25,13 @@ const parseTags = (raw) => {
     } catch {
         return String(raw).split(',').map(s => s.trim()).filter(Boolean);
     }
+};
+
+// Normalize a tag entry to { name, url? } — accepts strings or objects
+const tagEntry = (t) => {
+    if (typeof t === 'string') return { name: t };
+    if (t && typeof t === 'object' && t.name) return { name: t.name, ...(t.url ? { url: t.url } : {}) };
+    return null;
 };
 
 // ─── Crash-safety draft (localStorage snapshot) ─────────────────────────────
@@ -40,6 +48,59 @@ const EMPTY_ARTICLE = {
     tags: [],
     show_toc: true
 };
+
+// Editable tag chip: name + optional custom URL + remove
+function TagChip({ tag, onRemove, onSetUrl }) {
+    const [editing, setEditing] = useState(false);
+    const [urlDraft, setUrlDraft] = useState(tag.url || '');
+
+    const commit = () => {
+        const cleaned = urlDraft.trim();
+        const valid = !cleaned || /^https?:\/\/\S+$/i.test(cleaned);
+        if (!valid) {
+            toast.error('Tag link must start with http:// or https://');
+            setUrlDraft(tag.url || '');
+        } else {
+            onSetUrl(cleaned || undefined);
+        }
+        setEditing(false);
+    };
+
+    return (
+        <span className="text-xs bg-muted px-2 py-0.5 rounded-full flex items-center gap-1">
+            {tag.name}
+            {tag.url && <Link2 className="h-3 w-3 text-blue-500" />}
+            <button
+                type="button"
+                title={tag.url ? `Custom link: ${tag.url}\nClick to edit` : 'Add custom link'}
+                onClick={() => { setUrlDraft(tag.url || ''); setEditing(true); }}
+                className="hover:text-blue-500"
+            >
+                {tag.url ? <Link2 className="h-3 w-3" /> : <Plus className="h-3 w-3 opacity-40" />}
+            </button>
+            <button type="button" onClick={onRemove} className="hover:text-red-500">
+                <X className="h-3 w-3" />
+            </button>
+            {editing && (
+                <span className="flex items-center gap-1 ml-1">
+                    <input
+                        autoFocus
+                        type="url"
+                        value={urlDraft}
+                        onChange={(e) => setUrlDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+                            if (e.key === 'Escape') setEditing(false);
+                        }}
+                        onBlur={commit}
+                        placeholder="https://custom-link.com"
+                        className="w-48 px-1.5 py-0.5 border rounded text-xs bg-background"
+                    />
+                </span>
+            )}
+        </span>
+    );
+}
 
 const ArticleEditor = () => {
     const { id } = useParams();
@@ -267,12 +328,28 @@ const ArticleEditor = () => {
 
     // ─── Tags ────────────────────────────────────────────────────────────────
     const addTag = () => {
-        const t = tagInput.trim().toLowerCase();
-        if (!t) return;
-        setArticle(prev => ({ ...prev, tags: prev.tags?.includes(t) ? prev.tags : [...(prev.tags || []), t] }));
+        const raw = tagInput.trim().toLowerCase();
+        if (!raw) return;
+        // "ai https://example.com/post" → tag with a custom link
+        const m = raw.match(/^(\S+)\s+(https?:\/\/\S+)$/);
+        const name = m ? m[1] : raw;
+        const url = m ? m[2] : undefined;
+        setArticle(prev => {
+            const tags = (prev.tags || []).map(tagEntry);
+            if (tags.some(t => t.name === name)) return prev;
+            return { ...prev, tags: [...tags, url ? { name, url } : { name }] };
+        });
         setTagInput('');
     };
-    const removeTag = (t) => setArticle(prev => ({ ...prev, tags: (prev.tags || []).filter(x => x !== t) }));
+    const removeTag = (name) => setArticle(prev => ({ ...prev, tags: (prev.tags || []).map(tagEntry).filter(t => t.name !== name) }));
+    const setTagUrl = (name, url) => {
+        setArticle(prev => ({
+            ...prev,
+            tags: (prev.tags || []).map(tagEntry).map(t =>
+                t.name === name ? (url ? { name, url } : { name }) : t
+            ),
+        }));
+    };
 
     // ─── Formatting shortcuts (inside the editor textarea) ──────────────────
     const applyEdit = (fn) => {
@@ -602,6 +679,14 @@ const ArticleEditor = () => {
                                     ref={imageUploadRef}
                                     onInsert={handleContentChange}
                                     onSetFeatured={(url) => setArticle(prev => ({ ...prev, image_url: url }))}
+                                    onReplaced={(oldUrl, newUrl) => {
+                                        // Swap re-cropped image everywhere it's referenced
+                                        setArticle(prev => ({
+                                            ...prev,
+                                            content: prev.content?.split(oldUrl).join(newUrl),
+                                            image_url: prev.image_url === oldUrl ? newUrl : prev.image_url,
+                                        }));
+                                    }}
                                     textareaRef={contentRef}
                                     autoInsert
                                     allowVideos
@@ -633,13 +718,13 @@ const ArticleEditor = () => {
                                     <div>
                                         <Label htmlFor="tags">Tags</Label>
                                         <div className="flex flex-wrap gap-1.5 mb-2">
-                                            {(article.tags || []).map((t) => (
-                                                <span key={t} className="text-xs bg-muted px-2 py-0.5 rounded-full flex items-center gap-1">
-                                                    {t}
-                                                    <button type="button" onClick={() => removeTag(t)} className="hover:text-red-500">
-                                                        <X className="h-3 w-3" />
-                                                    </button>
-                                                </span>
+                                            {(article.tags || []).map(tagEntry).filter(Boolean).map((t) => (
+                                                <TagChip
+                                                    key={t.name}
+                                                    tag={t}
+                                                    onRemove={() => removeTag(t.name)}
+                                                    onSetUrl={(url) => setTagUrl(t.name, url)}
+                                                />
                                             ))}
                                         </div>
                                         <Input
@@ -651,12 +736,16 @@ const ArticleEditor = () => {
                                                     e.preventDefault();
                                                     addTag();
                                                 } else if (e.key === 'Backspace' && !tagInput && article.tags?.length) {
-                                                    removeTag(article.tags[article.tags.length - 1]);
+                                                    removeTag((article.tags.map(tagEntry).at(-1) || {}).name);
                                                 }
                                             }}
                                             onBlur={addTag}
-                                            placeholder="Add a tag and press Enter"
+                                            placeholder='Add a tag — e.g. "ai" or "ai https://link.to/page"'
                                         />
+                                        <p className="text-[11px] text-muted-foreground mt-1">
+                                            Tip: append a URL after the tag name to give it a custom link —
+                                            e.g. <code className="font-mono">ai https://example.com/my-post</code>.
+                                        </p>
                                     </div>
                                     <div>
                                         <Label htmlFor="featured-image">Featured Hero Image</Label>

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Flame, Plus, Trash2, Link2, Save } from 'lucide-react';
+import { Flame, Plus, Trash2, Link2, Save, Pencil, X } from 'lucide-react';
 import { api } from '../api';
 import toast from 'react-hot-toast';
 
@@ -17,6 +17,27 @@ const HotTakes = () => {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [newTake, setNewTake] = useState({ take: '', article_slug: '', published: true });
+  // id of the take whose text is being edited inline
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState('');
+
+  const startEdit = (take) => {
+    setEditingId(take.id);
+    setEditText(take.take);
+  };
+
+  const saveEdit = async (id) => {
+    if (!editText.trim()) {
+      toast.error('Take text can\'t be empty');
+      return;
+    }
+    try {
+      await updateTake(id, { take: editText.trim() });
+      setEditingId(null);
+    } finally {
+      // updateTake handles errors/toasts; editingId cleared on success only
+    }
+  };
 
   useEffect(() => {
     load();
@@ -59,6 +80,7 @@ const HotTakes = () => {
       const current = takes.find((t) => t.id === id);
       const updated = await api.updateHotTake(id, { ...current, ...patch });
       setTakes((prev) => prev.map((t) => (t.id === id ? updated : t)));
+      setEditingId(null);
       toast.success('Updated');
     } catch (error) {
       toast.error('Failed to update take');
@@ -162,7 +184,30 @@ const HotTakes = () => {
                 <div className="flex items-start gap-3">
                   <Flame className="h-4 w-4 text-orange-500 mt-1 shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm">{take.take}</p>
+                    {editingId === take.id ? (
+                      <div className="flex items-start gap-2">
+                        <textarea
+                          autoFocus
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') setEditingId(null);
+                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveEdit(take.id);
+                          }}
+                          className="flex-1 p-2 border rounded-lg h-16 resize-none bg-background text-sm"
+                        />
+                        <div className="flex flex-col gap-1">
+                          <Button size="sm" onClick={() => saveEdit(take.id)}>
+                            <Save className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm">{take.take}</p>
+                    )}
                     <div className="flex items-center gap-3 mt-2">
                       {take.article_slug ? (
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -194,7 +239,16 @@ const HotTakes = () => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-6 px-1.5 text-red-500 hover:text-red-600 ml-auto"
+                        className="h-6 px-1.5 hover:text-blue-600"
+                        title="Edit take text"
+                        onClick={() => startEdit(take)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1.5 text-red-500 hover:text-red-600"
                         onClick={() => deleteTake(take.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />

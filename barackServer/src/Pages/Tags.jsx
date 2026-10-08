@@ -1,21 +1,11 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
+import { parseTagEntries } from "@/lib/tags";
 import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Tag, ArrowLeft, Hash } from "lucide-react";
-
-const parseTags = (raw) => {
-  if (Array.isArray(raw)) return raw;
-  if (!raw) return [];
-  try {
-    const v = JSON.parse(raw);
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-};
 
 export default function Tags() {
   const navigate = useNavigate();
@@ -30,9 +20,9 @@ export default function Tags() {
   // Build tag → posts map from all published articles
   const tagMap = {};
   posts.forEach((p) => {
-    parseTags(p.tags).forEach((tag) => {
-      if (!tagMap[tag]) tagMap[tag] = [];
-      tagMap[tag].push(p);
+    parseTagEntries(p.tags).forEach((tag) => {
+      if (!tagMap[tag.name]) tagMap[tag.name] = [];
+      tagMap[tag.name].push(p);
     });
   });
   const tags = Object.entries(tagMap).sort((a, b) => b[1].length - a[1].length);

@@ -104,6 +104,10 @@ export function splitBlocks(content) {
         kind = 'image';
         const m = raw.match(IMAGE_LINE_RE);
         text = m?.[1] || m?.[2] || 'image';
+      } else if (/!\[[^\]]*\]\([^)\s]+[^)]*\)/.test(raw)) {
+        // An image embedded inside a paragraph (text before/after it on the same block)
+        kind = 'paragraph-with-image';
+        text = 'image in paragraph';
       }
       blocks.push({ raw, startLine, endLine: endLineExclusive - 1, kind, text });
       current = [];
@@ -149,33 +153,33 @@ export function getHeadings(content) {
 export function moveBlock(content, fromIndex, toIndex) {
   const blocks = splitBlocks(content);
   if (fromIndex < 0 || fromIndex >= blocks.length) return content;
-  if (toIndex < 0) toIndex = 0;
-  if (toIndex >= blocks.length) toIndex = blocks.length - 1;
   if (fromIndex === toIndex) return content;
 
   const from = blocks[fromIndex];
-  // Remove the source block, then re-derive indices on the shortened list
+  // Remove the source block, then re-derive indices on the shortened list.
+  // Moving down: "target index" toIndex in the original list corresponds to the
+  // block that will sit AFTER the removed one — i.e. original index toIndex+1
+  // becomes index toIndex after removal, so insert BEFORE remaining[toIndex].
   const remaining = blocks.filter((_, i) => i !== fromIndex);
-  let target;
-  if (toIndex > fromIndex) {
-    // After removal the block that was at toIndex sits at toIndex-1; insert AFTER it
-    target = remaining[Math.min(toIndex - 1, remaining.length - 1)];
-  } else {
-    target = remaining[toIndex];
-  }
-  if (!target) return content;
+  // toIndex >= blocks.length means "append at the very end"
+  const appendAtEnd = toIndex >= blocks.length;
+  const target = appendAtEnd ? null : remaining[Math.min(toIndex, remaining.length - 1)];
+  if (!appendAtEnd && !target) return content;
 
   const lines = content.split('\n');
   // Replace source block lines with a single marker to splice cleanly
   const removed = [...lines];
   removed.splice(from.startLine, from.endLine - from.startLine + 1);
-  // Compute target start line after removal
-  let targetStart = target.startLine;
-  if (target.startLine > from.startLine) {
-    targetStart -= from.endLine - from.startLine + 1;
-  }
-  // Insert before the target block; if target is a heading, also keep a blank line after
+  // Insert before the target block (or at the end when appending)
   const insertLines = [...from.raw.split('\n'), ''];
-  removed.splice(targetStart, 0, ...insertLines);
+  if (appendAtEnd) {
+    removed.push(...insertLines);
+  } else {
+    let targetStart = target.startLine;
+    if (target.startLine > from.startLine) {
+      targetStart -= from.endLine - from.startLine + 1;
+    }
+    removed.splice(targetStart, 0, ...insertLines);
+  }
   return removed.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }

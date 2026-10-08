@@ -90,11 +90,23 @@ app.use((req, res, next) => {
 
 // ─── Serialization helpers ──────────────────────────────────────────────────
 
-// tags arrives as an array from the admin UI; store as JSON text for the DB
+// tags arrives as an array from the admin UI; store as JSON text for the DB.
+// Entries can be plain strings or { name, url } objects (custom tag links).
 function serializeTags(tags) {
   if (!tags) return null;
   const list = Array.isArray(tags) ? tags : String(tags).split(',');
-  const clean = list.map((t) => String(t).trim()).filter(Boolean);
+  const clean = list
+    .map((t) => {
+      if (typeof t === 'string') return t.trim();
+      if (t && typeof t === 'object' && t.name) {
+        const entry = { name: String(t.name).trim().toLowerCase() };
+        if (t.url && String(t.url).trim()) entry.url = String(t.url).trim();
+        return entry;
+      }
+      return null;
+    })
+    .filter(Boolean)
+    .filter((t, i, arr) => arr.findIndex((x) => (x.name || x) === (t.name || t)) === i);
   return clean.length ? JSON.stringify(clean) : null;
 }
 
@@ -399,6 +411,21 @@ app.post('/api/admin/gallery', authenticateToken, async (req, res) => {
     });
     const result = await db.execute({ sql: 'SELECT * FROM gallery WHERE id = ?', args: [id] });
     await auditLog('CREATE', 'gallery', id, title);
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/admin/gallery/:id', authenticateToken, async (req, res) => {
+  const { title, description, type, image_url, media, date } = req.body;
+  try {
+    await db.execute({
+      sql: 'UPDATE gallery SET title = ?, description = ?, type = ?, image_url = ?, media = ?, date = ? WHERE id = ?',
+      args: [title, description, type, image_url || null, serializeMedia(media), date, req.params.id],
+    });
+    const result = await db.execute({ sql: 'SELECT * FROM gallery WHERE id = ?', args: [req.params.id] });
+    await auditLog('UPDATE', 'gallery', req.params.id, title);
     res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });

@@ -1,23 +1,13 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
+import { parseTagEntries, tagHref } from "@/lib/tags";
 import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Search, X, Tag } from "lucide-react";
 import HotTakesRail from "@/components/blog/HotTakesRail";
-
-const parseTags = (raw) => {
-  if (Array.isArray(raw)) return raw;
-  if (!raw) return [];
-  try {
-    const v = JSON.parse(raw);
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-};
 
 const categories = ["all", "backend", "ai", "databases", "experiments", "other"];
 
@@ -144,15 +134,18 @@ export default function Blog() {
                 <h2 className="font-serif-display text-3xl font-bold text-stone-900 group-hover:text-stone-600 transition-colors mb-3">
                   {post.title}
                 </h2>
-                {parseTags(post.tags).length > 0 && (
+                {parseTagEntries(post.tags).length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-3">
-                    {parseTags(post.tags).map((tag) => (
-                      <span
-                        key={tag}
-                        className="font-body text-xs lowercase text-stone-500 border border-stone-200 px-2 py-0.5 rounded-full"
+                    {parseTagEntries(post.tags).map((tag) => (
+                      <Link
+                        key={tag.name}
+                        to={tagHref(tag, createPageUrl)}
+                        target={tag.url ? "_blank" : undefined}
+                        rel={tag.url ? "noopener noreferrer" : undefined}
+                        className="font-body text-xs lowercase text-stone-500 border border-stone-200 px-2 py-0.5 rounded-full hover:text-stone-800 transition-colors"
                       >
-                        #{tag}
-                      </span>
+                        #{tag.name}
+                      </Link>
                     ))}
                   </div>
                 )}

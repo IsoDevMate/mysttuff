@@ -11,7 +11,14 @@ const ASPECTS = [
   { label: '1:1', value: 1 },
 ];
 
+/**
+ * Crop modal. Works in two modes:
+ *  - file mode: `file` is a File (upload queue) — onConfirm receives the cropped File
+ *  - url mode:  `file` is a string URL (editing an already-uploaded image) —
+ *               onConfirm receives the cropped File too, caller re-uploads it
+ */
 export default function ImageCropModal({ file, queuePosition = 1, onConfirm, onSkip, onCancel }) {
+  const isUrlMode = typeof file === 'string';
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [aspect, setAspect] = useState(undefined);
@@ -19,12 +26,16 @@ export default function ImageCropModal({ file, queuePosition = 1, onConfirm, onS
   const [processing, setProcessing] = useState(false);
 
   // Create the object URL once per file and always revoke it (was leaking on every render)
-  const [imageUrl, setImageUrl] = useState(() => URL.createObjectURL(file));
+  const [imageUrl, setImageUrl] = useState(() => (isUrlMode ? file : URL.createObjectURL(file)));
   useEffect(() => {
+    if (isUrlMode) {
+      setImageUrl(file);
+      return;
+    }
     const url = URL.createObjectURL(file);
     setImageUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [file]);
+  }, [file, isUrlMode]);
 
   const onCropComplete = useCallback((_croppedArea, croppedPixels) => {
     setCroppedAreaPixels(croppedPixels);
@@ -34,20 +45,20 @@ export default function ImageCropModal({ file, queuePosition = 1, onConfirm, onS
     if (!croppedAreaPixels) return;
     setProcessing(true);
     try {
-      const mimeType = file.type || 'image/jpeg';
+      const mimeType = isUrlMode ? 'image/jpeg' : (file.type || 'image/jpeg');
       const ext = mimeType.split('/')[1] || 'jpg';
       const blob = await getCroppedBlob(imageUrl, croppedAreaPixels, mimeType);
       const croppedFile = new File([blob], `cropped-${Date.now()}.${ext}`, { type: mimeType });
       onConfirm(croppedFile);
     } catch {
-      onSkip(file);
+      if (onSkip) onSkip(file);
     } finally {
       setProcessing(false);
     }
   };
 
   const handleSkip = () => {
-    onSkip(file);
+    onSkip?.(file);
   };
 
   return (
@@ -55,7 +66,7 @@ export default function ImageCropModal({ file, queuePosition = 1, onConfirm, onS
       <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <h3 className="font-semibold text-sm">
-            Crop Image
+            {isUrlMode ? 'Edit Image' : 'Crop Image'}
             {queuePosition > 1 && (
               <span className="ml-2 text-xs text-muted-foreground font-normal">
                 {queuePosition} in queue
@@ -112,12 +123,14 @@ export default function ImageCropModal({ file, queuePosition = 1, onConfirm, onS
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <Button variant="outline" size="sm" onClick={handleSkip}>
-              Skip crop
-            </Button>
+            {onSkip && !isUrlMode && (
+              <Button variant="outline" size="sm" onClick={handleSkip}>
+                Skip crop
+              </Button>
+            )}
             <Button size="sm" onClick={handleConfirm} disabled={processing}>
               <Check className="h-3.5 w-3.5 mr-1" />
-              {processing ? 'Processing...' : 'Crop & upload'}
+              {processing ? 'Processing...' : isUrlMode ? 'Save & re-upload' : 'Crop & upload'}
             </Button>
           </div>
         </div>

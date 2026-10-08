@@ -110,6 +110,13 @@ class ApiClient {
     });
   }
 
+  async updateGalleryItem(id, item) {
+    return this.request(`/admin/gallery/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(item),
+    });
+  }
+
   async deleteGalleryItem(id) {
     return this.request(`/admin/gallery/${id}`, {
       method: 'DELETE',
