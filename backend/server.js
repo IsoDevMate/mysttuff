@@ -385,6 +385,216 @@ app.delete('/api/admin/hot-takes/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── Instants (Locket-style realtime captures) ─────────────────────────────
+
+// SSE clients — one entry per open connection
+const sseClients = new Set();
+function broadcastInstants(event, payload) {
+  const data = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const res of sseClients) {
+    try { res.write(data); } catch { /* client gone; cleanup on close */ }
+  }
+}
+
+// Public SSE stream — new/updated instants push to every open page instantly
+app.get('/api/instants/stream', (req, res) => {
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.flushHeaders();
+  res.write('event: connected\ndata: {}\n\n');
+  sseClients.add(res);
+  const keepAlive = setInterval(() => {
+    try { res.write(': ping\n\n'); } catch { /* noop */ }
+  }, 25000);
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    sseClients.delete(res);
+  });
+});
+
+// Public list (published only, newest first)
+app.get('/api/instants', async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 100);
+    const result = await db.execute({
+      sql: 'SELECT * FROM instants WHERE published = 1 ORDER BY created_at DESC, rowid DESC LIMIT ?',
+      args: [limit],
+    });
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin list (everything)
+app.get('/api/admin/instants', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM instants ORDER BY created_at DESC, rowid DESC');
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin create — broadcasts instantly
+app.post('/api/admin/instants', authenticateToken, async (req, res) => {
+  const { text, image_url, link_url, source, published } = req.body;
+  if (!text?.trim() && !image_url) {
+    return res.status(400).json({ error: 'An instant needs text or an image' });
+  }
+  const id = uuidv4();
+  try {
+    await db.execute({
+      sql: 'INSERT INTO instants (id, text, image_url, link_url, source, published) VALUES (?, ?, ?, ?, ?, ?)',
+      args: [id, text?.trim() || null, image_url || null, link_url || null, source || null, published === false ? 0 : 1],
+    });
+    const row = (await db.execute({ sql: 'SELECT * FROM instants WHERE id = ?', args: [id] })).rows[0];
+    await auditLog('CREATE', 'instant', id, (text || 'image').slice(0, 50));
+    if (row.published) broadcastInstants('instant:new', row);
+    res.json(row);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin update — broadcast the change
+app.put('/api/admin/instants/:id', authenticateToken, async (req, res) => {
+  const { text, image_url, link_url, source, published } = req.body;
+  try {
+    await db.execute({
+      sql: 'UPDATE instants SET text = ?, image_url = ?, link_url = ?, source = ?, published = ? WHERE id = ?',
+      args: [text?.trim() || null, image_url || null, link_url || null, source || null, published ? 1 : 0, req.params.id],
+    });
+    const row = (await db.execute({ sql: 'SELECT * FROM instants WHERE id = ?', args: [req.params.id] })).rows[0];
+    if (!row) return res.status(404).json({ error: 'Instant not found' });
+    await auditLog('UPDATE', 'instant', row.id, (row.text || 'image').slice(0, 50));
+    broadcastInstants(row.published ? 'instant:update' : 'instant:remove', row);
+    res.json(row);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/instants/:id', authenticateToken, async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM instants WHERE id = ?', args: [req.params.id] });
+    await db.execute({ sql: 'DELETE FROM instant_thoughts WHERE instant_id = ?', args: [req.params.id] });
+    await auditLog('DELETE', 'instant', req.params.id, req.params.id);
+    broadcastInstants('instant:remove', { id: req.params.id });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Thoughts on an instant — visible to all; writing is waitlist-gated.
+// Unknown emails go straight onto the waitlist as 'pending' (Locket-style ask-to-join).
+app.get('/api/instants/:id/thoughts', async (req, res) => {
+  try {
+    const result = await db.execute({
+      sql: 'SELECT * FROM instant_thoughts WHERE instant_id = ? AND approved = 1 ORDER BY created_at ASC',
+      args: [req.params.id],
+    });
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/instants/:id/thoughts', async (req, res) => {
+  const { author_name, body, email } = req.body;
+  if (!author_name?.trim() || !body?.trim()) {
+    return res.status(400).json({ error: 'Name and thought are required' });
+  }
+  if (!email?.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) {
+    return res.status(400).json({ error: 'A valid email is required — new folks join the waitlist first' });
+  }
+  try {
+    const instant = await db.execute({ sql: 'SELECT id FROM instants WHERE id = ? AND published = 1', args: [req.params.id] });
+    if (!instant.rows.length) return res.status(404).json({ error: 'Instant not found' });
+
+    const wl = await db.execute({ sql: 'SELECT status FROM waitlist WHERE email = ?', args: [email.trim().toLowerCase()] });
+    if (!wl.rows.length) {
+      await db.execute({
+        sql: 'INSERT INTO waitlist (id, email, name, status) VALUES (?, ?, ?, ?)',
+        args: [uuidv4(), email.trim().toLowerCase(), author_name.trim(), 'pending'],
+      });
+      return res.status(202).json({
+        queued: true,
+        message: "You're on the waitlist! Your thought will go live once you're approved.",
+      });
+    }
+    if (wl.rows[0].status !== 'approved') {
+      return res.status(202).json({
+        queued: true,
+        message: "You're still on the waitlist — your thought will go live once you're approved.",
+      });
+    }
+    const id = uuidv4();
+    await db.execute({
+      sql: 'INSERT INTO instant_thoughts (id, instant_id, author_name, body, approved) VALUES (?, ?, ?, ?, 1)',
+      args: [id, req.params.id, author_name.trim(), body.trim()],
+    });
+    const row = (await db.execute({ sql: 'SELECT * FROM instant_thoughts WHERE id = ?', args: [id] })).rows[0];
+    broadcastInstants('thought:new', { instantId: req.params.id, thought: row });
+    res.json(row);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Waitlist management
+app.post('/api/waitlist', async (req, res) => {
+  const { email, name } = req.body;
+  if (!email?.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) {
+    return res.status(400).json({ error: 'A valid email is required' });
+  }
+  try {
+    const id = uuidv4();
+    await db.execute({
+      sql: 'INSERT INTO waitlist (id, email, name, status) VALUES (?, ?, ?, ?) ON CONFLICT(email) DO NOTHING',
+      args: [id, email.trim().toLowerCase(), name?.trim() || null, 'pending'],
+    });
+    res.json({ success: true, message: "You're on the list!" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/waitlist', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM waitlist ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/admin/waitlist/:id', authenticateToken, async (req, res) => {
+  const { status } = req.body;
+  if (!['pending', 'approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+  try {
+    await db.execute({ sql: 'UPDATE waitlist SET status = ? WHERE id = ?', args: [status, req.params.id] });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/waitlist/:id', authenticateToken, async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM waitlist WHERE id = ?', args: [req.params.id] });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ─── File Upload ─────────────────────────────────────────────────────────────
 
 app.post('/api/admin/upload', authenticateToken, upload.single('file'), async (req, res) => {

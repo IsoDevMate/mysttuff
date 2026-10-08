@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
 import { parseTagEntries, tagHref } from "@/lib/tags";
@@ -14,14 +14,15 @@ import ShareButtons from "@/components/blog/ShareButtons";
 import RelatedPosts from "@/components/blog/RelatedPosts";
 
 const slugify = (text) =>
-  String(text).toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-");
+  String(text).toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").slice(0, 60);
 
 const textOf = (children) =>
   Array.isArray(children) ? children.map(textOf).join("") : String(children ?? "");
 
-// H2/H3 headings from the markdown source (fence-aware) — powers the auto TOC
+// H1–H4 headings from the markdown source (fence-aware) — powers the auto TOC
 const getTocItems = (markdown) => {
   const items = [];
+  const seen = {};
   let inFence = false;
   for (const line of (markdown || "").split("\n")) {
     if (line.trimStart().startsWith("```")) {
@@ -29,8 +30,19 @@ const getTocItems = (markdown) => {
       continue;
     }
     if (inFence) continue;
-    const m = line.match(/^(#{2,3})\s+(.*)$/);
-    if (m) items.push({ level: m[1].length, text: m[2].trim(), id: slugify(m[2]) });
+    const m = line.match(/^(#{1,4})\s+(.*)$/);
+    if (!m) continue;
+    const text = m[2].trim();
+    if (!text) continue;
+    // Dedupe repeated headings so every anchor is unique
+    let id = slugify(text);
+    if (seen[id] !== undefined) {
+      seen[id] += 1;
+      id = `${id}-${seen[id]}`;
+    } else {
+      seen[id] = 0;
+    }
+    items.push({ level: m[1].length, text, id });
   }
   return items;
 };
@@ -57,9 +69,24 @@ export default function BlogPost() {
   );
   const [activeId, setActiveId] = useState(null);
 
-  // Scroll-spy: highlight the section currently on screen
-  useEffect(() => {
+  // Heading ids + scroll-spy. Ids are assigned after EVERY commit by walking
+  // the DOM in document order and matching each heading to its TOC entry —
+  // immune to React render-order quirks AND to React wiping manually-set
+  // attributes when it recreates markdown nodes on re-render.
+  useLayoutEffect(() => {
     if (!tocItems.length) return;
+    const heads = document.querySelectorAll("article h1, article h2, article h3, article h4");
+    let i = 0;
+    heads.forEach((h) => {
+      const match = tocItems[i];
+      if (match && match.text === h.textContent.trim()) {
+        h.id = match.id;
+        i += 1;
+      } else {
+        h.id = slugify(h.textContent) || `heading-${i}`;
+      }
+    });
+
     const els = tocItems.map((t) => document.getElementById(t.id)).filter(Boolean);
     if (!els.length) return;
     const obs = new IntersectionObserver(
@@ -71,7 +98,7 @@ export default function BlogPost() {
     );
     els.forEach((el) => obs.observe(el));
     return () => obs.disconnect();
-  }, [tocItems]);
+  });
 
   const scrollTo = (e, id) => {
     e.preventDefault();
@@ -207,28 +234,22 @@ export default function BlogPost() {
               remarkPlugins={[remarkGfm]}
               components={{
                 h1: ({ children }) => (
-                  <h1 className="font-serif-display text-3xl font-bold mt-12 mb-4">
+                  <h1 className="font-serif-display text-3xl font-bold mt-12 mb-4 scroll-mt-24">
                     {children}
                   </h1>
                 ),
                 h2: ({ children }) => (
-                  <h2
-                    id={slugify(textOf(children))}
-                    className="font-serif-display text-2xl font-bold mt-10 mb-4 scroll-mt-24"
-                  >
+                  <h2 className="font-serif-display text-2xl font-bold mt-10 mb-4 scroll-mt-24">
                     {children}
                   </h2>
                 ),
                 h3: ({ children }) => (
-                  <h3
-                    id={slugify(textOf(children))}
-                    className="font-serif-display text-xl font-bold mt-8 mb-3 scroll-mt-24"
-                  >
+                  <h3 className="font-serif-display text-xl font-bold mt-8 mb-3 scroll-mt-24">
                     {children}
                   </h3>
                 ),
                 h4: ({ children }) => (
-                  <h4 className="font-serif-display text-lg font-bold mt-6 mb-2">
+                  <h4 className="font-serif-display text-lg font-bold mt-6 mb-2 scroll-mt-24">
                     {children}
                   </h4>
                 ),

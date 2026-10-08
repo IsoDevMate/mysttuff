@@ -40,6 +40,47 @@ export function prefixLine(textarea, prefix) {
   return { newValue, cursorPos };
 }
 
+/**
+ * Toggle a list marker ("- " or "1. ") on every line of the selection.
+ * Lines that already have the marker get it stripped; others get it added.
+ * Returns null when there is nothing to do (no selection) so callers can
+ * fall back to inserting placeholder lines.
+ */
+export function toggleList(textarea, marker) {
+  const { selectionStart: start, selectionEnd: end, value } = textarea;
+  if (start === end && !value.slice(0, start).match(/\S/)) return null; // empty doc, no selection
+
+  const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+  const lineEndRaw = value.indexOf('\n', end);
+  const lineEnd = lineEndRaw === -1 ? value.length : lineEndRaw;
+  const block = value.slice(lineStart, lineEnd);
+  const lines = block.split('\n');
+
+  // Match an existing marker at line start ("- " or "1. "), tolerating a
+  // missing space after the marker so "-apples" is still recognized as marked
+  const isOrdered = /^\d+\.\s*$/.test(marker.trim());
+  const markerCore = marker.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const hasRe = new RegExp(`^\\s*${markerCore}[ ]?`);
+  const strippedCount = lines.filter((l) => hasRe.test(l)).length;
+  const allMarked = strippedCount === lines.length;
+
+  // Ordered lists number sequentially: 1. 2. 3. … (a blank line restarts at 1)
+  let n = 0;
+  const newLines = lines.map((line) => {
+    if (allMarked) return line.replace(hasRe, '');          // toggling off
+    if (isOrdered) {
+      if (!line.trim()) { n = 0; return line; }             // blank breaks the numbering
+      n += 1;
+      return `${n}. ${line.replace(hasRe, '').replace(/^\s+/, '')}`;
+    }
+    if (hasRe.test(line)) return marker + line.replace(hasRe, ''); // re-normalize
+    return marker + line.replace(/^\s+/, '');                // toggle on
+  });
+
+  const newValue = value.slice(0, lineStart) + newLines.join('\n') + value.slice(lineEnd);
+  return { newValue, selectStart: lineStart, selectEnd: lineStart + newLines.join('\n').length };
+}
+
 export const MARKDOWN_SNIPPETS = {
   h1: { type: 'prefix', value: '# ' },
   h2: { type: 'prefix', value: '## ' },

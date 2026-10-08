@@ -153,6 +153,42 @@ class ApiClient {
     return this.request('/admin/hot-takes');
   }
 
+  // Instants
+  async getInstants() {
+    return this.request('/admin/instants');
+  }
+
+  async createInstant(instant) {
+    return this.request('/admin/instants', {
+      method: 'POST',
+      body: JSON.stringify(instant),
+    });
+  }
+
+  async updateInstant(id, instant) {
+    return this.request(`/admin/instants/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(instant),
+    });
+  }
+
+  async deleteInstant(id) {
+    return this.request(`/admin/instants/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getWaitlist() {
+    return this.request('/admin/waitlist');
+  }
+
+  async setWaitlistStatus(id, status) {
+    return this.request(`/admin/waitlist/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+  }
+
   async createHotTake(take) {
     return this.request('/admin/hot-takes', {
       method: 'POST',

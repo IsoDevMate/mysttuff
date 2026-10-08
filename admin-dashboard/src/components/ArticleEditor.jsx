@@ -12,7 +12,7 @@ import ImageOrganizer from './ImageOrganizer';
 import ShortcutsModal from './ShortcutsModal';
 import { api } from '../api';
 import toast from 'react-hot-toast';
-import { insertAtCursor, wrapSelection, prefixLine } from '../utils/markdownEditor';
+import { insertAtCursor, wrapSelection, prefixLine, toggleList } from '../utils/markdownEditor';
 
 // tags is stored as a JSON string in the DB — normalize to an array.
 // Entries may be plain strings or { name, url } objects (custom tag links).
@@ -318,12 +318,82 @@ const ArticleEditor = () => {
         setArticle(prev => ({ ...prev, title, slug: generateSlug(title) }));
     };
 
-    const handleContentChange = (newContent) => {
-        if (typeof newContent === 'function') {
-            setArticle(prev => ({ ...prev, content: newContent(prev.content) }));
-        } else {
-            setArticle(prev => ({ ...prev, content: newContent }));
+    const handleContentChange = (newContent, opts = {}) => {
+        const base = articleRef.current?.content ?? '';
+        const nextContent = typeof newContent === 'function' ? newContent(base) : newContent;
+        // Every content change gets a history entry (undo/redo). Typing
+        // coalesces into one entry per pause; discrete actions (toolbar,
+        // uploads, drag-reorder) each get their own.
+        if (!undoRedoGuardRef.current) pushContentHistory(nextContent, !!opts.immediate);
+        setArticle(prev => ({ ...prev, content: nextContent }));
+    };
+
+    // ─── Undo / Redo (content history) ───────────────────────────────────────
+    // React state + a controlled textarea break the browser's native undo, so
+    // every content change (typing, toolbar, uploads, drag-reorder) is pushed
+    // here. Coalesces rapid keystrokes into one entry per pause.
+    const contentHistoryRef = useRef({ stack: [], index: -1 });
+    const lastPushRef = useRef({ time: 0 });
+
+    // Guard: undo/redo restore older content through setArticle directly, so
+    // they must not re-enter the history push below.
+    const undoRedoGuardRef = useRef(false);
+
+    const pushContentHistory = (content, immediate = false) => {
+        const now = Date.now();
+        const h = contentHistoryRef.current;
+        const coalesce = !immediate && now - lastPushRef.current.time < 500 && h.stack.length > 0;
+        lastPushRef.current.time = now;
+        if (coalesce) {
+            h.stack[h.index] = content; // extend the current entry
+            return;
         }
+        h.stack = h.stack.slice(0, h.index + 1);
+        h.stack.push(content);
+        if (h.stack.length > 200) h.stack.shift(); // cap memory
+        h.index = h.stack.length - 1;
+    };
+
+    const undo = () => {
+        const h = contentHistoryRef.current;
+        if (h.index <= 0) return;
+        h.index -= 1;
+        lastPushRef.current.time = 0; // next edit starts a fresh entry
+        undoRedoGuardRef.current = true;
+        setArticle(prev => ({ ...prev, content: h.stack[h.index] }));
+        undoRedoGuardRef.current = false;
+    };
+
+    const redo = () => {
+        const h = contentHistoryRef.current;
+        if (h.index >= h.stack.length - 1) return;
+        h.index += 1;
+        undoRedoGuardRef.current = true;
+        setArticle(prev => ({ ...prev, content: h.stack[h.index] }));
+        undoRedoGuardRef.current = false;
+    };
+
+    // Seed/reset history once per article load — before user metadata is in.
+    // While loading, content is still '' and must not snapshot as a history base.
+    const historySeededForRef = useRef(null);
+    useEffect(() => {
+        if (loading) return;
+        if (draftKey === null || draftKey === undefined) return;
+        if (historySeededForRef.current === draftKey) return;
+        historySeededForRef.current = draftKey;
+        contentHistoryRef.current = { stack: [articleRef.current?.content ?? ''], index: 0 };
+        lastPushRef.current.time = 0;
+    }, [loading, draftKey]);
+
+    // Intercept Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y in the textarea before React's
+    // value swap can fire input events (which would corrupt native undo state)
+    const handleUndoKeys = (e) => {
+        const mod = e.metaKey || e.ctrlKey;
+        if (!mod) return false;
+        const key = e.key.toLowerCase();
+        if (key === 'z' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); undo(); return true; }
+        if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); e.stopPropagation(); redo(); return true; }
+        return false;
     };
 
     // ─── Tags ────────────────────────────────────────────────────────────────
@@ -356,7 +426,7 @@ const ArticleEditor = () => {
         const el = contentRef.current;
         if (!el) return;
         const result = fn(el);
-        handleContentChange(result.newValue);
+        handleContentChange(result.newValue, { immediate: true });
         requestAnimationFrame(() => {
             el.focus();
             if (result.selectStart !== undefined) el.setSelectionRange(result.selectStart, result.selectEnd);
@@ -374,9 +444,29 @@ const ArticleEditor = () => {
         else if (key === 'e') { e.preventDefault(); applyEdit(el => wrapSelection(el, '`', '`', 'code')); }
         else if (key === 'x' && e.shiftKey) { e.preventDefault(); applyEdit(el => wrapSelection(el, '~~', '~~', 'strikethrough')); }
         else if (['1', '2', '3', '4'].includes(key)) { e.preventDefault(); applyEdit(el => prefixLine(el, '#'.repeat(Number(key)) + ' ')); }
-        else if (key === '8' && e.shiftKey) { e.preventDefault(); applyEdit(el => insertAtCursor(el, '\n- List item\n- List item\n')); }
-        else if (key === '7' && e.shiftKey) { e.preventDefault(); applyEdit(el => insertAtCursor(el, '\n1. First item\n2. Second item\n')); }
+        else if (key === '8' && e.shiftKey) { e.preventDefault(); handleList('- '); }
+        else if (key === '7' && e.shiftKey) { e.preventDefault(); handleList('1. '); }
         else if (key === 'u') { e.preventDefault(); imageUploadRef.current?.openPicker(); }
+    };
+
+    // Toggle a list marker across the selected lines; falls back to inserting
+    // starter lines when nothing is selected
+    const handleList = (marker) => {
+        const el = contentRef.current;
+        if (!el) return;
+        const result = toggleList(el, marker);
+        if (result === null) {
+            handleContentChange(
+                insertAtCursor(el, marker === '- ' ? '\n- List item\n- List item\n' : '\n1. First item\n2. Second item\n').newValue,
+                { immediate: true }
+            );
+            return;
+        }
+        handleContentChange(result.newValue, { immediate: true });
+        requestAnimationFrame(() => {
+            el.focus();
+            el.setSelectionRange(result.selectStart, result.selectEnd);
+        });
     };
 
     // ─── Global shortcuts (save / publish / cheat sheet) ─────────────────────
@@ -635,6 +725,10 @@ const ArticleEditor = () => {
                                     <MarkdownToolbar
                                         textareaRef={contentRef}
                                         onContentChange={handleContentChange}
+                                        onUndo={undo}
+                                        onRedo={redo}
+                                        canUndo={contentHistoryRef.current.index > 0}
+                                        canRedo={contentHistoryRef.current.index < contentHistoryRef.current.stack.length - 1}
                                         onImageClick={() => imageUploadRef.current?.openPicker()}
                                     />
                                     <textarea
@@ -642,7 +736,10 @@ const ArticleEditor = () => {
                                         id="content"
                                         value={article.content}
                                         onChange={(e) => handleContentChange(e.target.value)}
-                                        onKeyDown={handleEditorKeyDown}
+                                        onKeyDown={(e) => {
+                                            if (handleUndoKeys(e)) return;
+                                            handleEditorKeyDown(e);
+                                        }}
                                         onPaste={handleEditorPaste}
                                         onDrop={handleEditorDrop}
                                         placeholder="Write in Markdown... Use the toolbar above for headings, quotes, code, tables, and images."
@@ -663,7 +760,7 @@ const ArticleEditor = () => {
                             <CardContent>
                                 <ImageOrganizer
                                     content={article.content}
-                                    onContentChange={handleContentChange}
+                                    onContentChange={(next) => handleContentChange(next, { immediate: true })}
                                 />
                             </CardContent>
                         </Card>

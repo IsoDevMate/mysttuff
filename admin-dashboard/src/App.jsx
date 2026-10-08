@@ -9,6 +9,7 @@ import { Button } from './components/ui/button';
 import ArticleList from './components/ArticleList';
 import Gallery from './components/Gallery';
 import HotTakes from './components/HotTakes';
+import Instants from './components/Instants';
 import Dashboard from './components/Dashboard';
 import Settings from './components/Settings';
 import Sidebar from './components/Sidebar';
@@ -98,6 +99,7 @@ function App() {
                 <Route path="/articles/:id" element={<ArticleEditor />} />
                 <Route path="/gallery" element={<Gallery />} />
                 <Route path="/hot-takes" element={<HotTakes />} />
+                <Route path="/instants" element={<Instants />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/health" element={<SystemHealth />} />
                 <Route path="/audit-logs" element={<AuditLogs />} />

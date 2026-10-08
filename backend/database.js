@@ -73,6 +73,30 @@ if (process.env.TURSO_AUTH_TOKEN) {
       published INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS instants (
+      id TEXT PRIMARY KEY,
+      text TEXT,
+      image_url TEXT,
+      link_url TEXT,
+      source TEXT,
+      published INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS instant_thoughts (
+      id TEXT PRIMARY KEY,
+      instant_id TEXT NOT NULL,
+      author_name TEXT NOT NULL,
+      body TEXT NOT NULL,
+      approved INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS waitlist (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      name TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
   ], 'write');
 
   // Column migrations — ALTER TABLE errors if the column already exists, so ignore those.

@@ -12,7 +12,7 @@ const IMAGE_LINE_RE = /^\s*!\[([^\]]*)\]\(([^)\s]+)[^)]*\)\s*$/;
  * become draggable too.
  */
 export default function ImageOrganizer({ content, onContentChange }) {
-  const [dragging, setDragging] = useState(null); // block index
+  const [draggingId, setDraggingId] = useState(null); // block index being dragged
   const [overIndex, setOverIndex] = useState(null); // drop target block index
 
   const blocks = useMemo(() => splitBlocks(content || ''), [content]);
@@ -58,14 +58,14 @@ export default function ImageOrganizer({ content, onContentChange }) {
     );
   }
 
-  const handleDrop = (targetIndex) => {
-    if (dragging === null || dragging === targetIndex) {
-      setDragging(null);
+  const handleDrop = (fromIndex, targetIndex) => {
+    if (fromIndex === null || fromIndex === undefined || fromIndex === targetIndex) {
+      setDraggingId(null);
       setOverIndex(null);
       return;
     }
-    onContentChange(moveBlock(content, dragging, targetIndex));
-    setDragging(null);
+    onContentChange(moveBlock(content, fromIndex, targetIndex));
+    setDraggingId(null);
     setOverIndex(null);
   };
 
@@ -84,39 +84,45 @@ export default function ImageOrganizer({ content, onContentChange }) {
 
       {blocks.map((block, i) => (
         <React.Fragment key={i}>
-          {/* drop zone above each block */}
+          {/* Drop zone above each block — invisibly tall while dragging so any
+              vertical position over the gap lands here (drag-anywhere) */}
           <div
             onDragOver={(e) => {
-              if (dragging === null) return;
+              if (draggingId === null) return;
               e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
               setOverIndex(i);
             }}
-            onDragLeave={() => setOverIndex((v) => (v === i ? null : v))}
             onDrop={(e) => {
               e.preventDefault();
-              handleDrop(i);
+              const from = e.dataTransfer.getData('text/organizer-index');
+              const fromIdx = from === '' ? draggingId : Number(from);
+              handleDrop(fromIdx, i);
             }}
-            className={`h-1.5 rounded-full transition-all ${
-              dragging !== null && overIndex === i
-                ? 'bg-primary h-3'
-                : dragging !== null
-                  ? 'bg-muted-foreground/15'
-                  : ''
+            className={`rounded-full transition-all ${
+              draggingId !== null
+                ? `my-1 ${overIndex === i ? 'h-6 bg-primary/80 ring-2 ring-primary/30' : 'h-4 bg-muted-foreground/20'}`
+                : 'h-1.5'
             }`}
           />
 
           {block.kind === 'image' ? (
             <div
               draggable
-              onDragStart={() => setDragging(i)}
+              onDragStart={(e) => {
+                // dataTransfer makes the drag survive state re-renders
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/organizer-index', String(i));
+                setDraggingId(i);
+              }}
               onDragEnd={() => {
-                setDragging(null);
+                setDraggingId(null);
                 setOverIndex(null);
               }}
               className={`flex items-center gap-2 px-2 py-1.5 rounded border bg-blue-50/60 dark:bg-blue-950/30 cursor-grab active:cursor-grabbing transition-opacity ${
-                dragging === i ? 'opacity-40' : 'hover:border-blue-400'
+                draggingId === i ? 'opacity-40' : 'hover:border-blue-400'
               }`}
-              title="Drag to reposition this image"
+              title="Drag to reposition this image — or use the arrows"
             >
               <GripVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0 hidden sm:block" />
               {imageUrlOf(block) ? (
@@ -167,7 +173,7 @@ export default function ImageOrganizer({ content, onContentChange }) {
             <div className="flex items-center gap-2 px-2 py-1.5 text-xs rounded border border-dashed border-blue-300 dark:border-blue-800 bg-blue-50/30 dark:bg-blue-950/20">
               <ImageIcon className="h-3.5 w-3.5 text-blue-500 shrink-0" />
               <span className="truncate flex-1 opacity-70">
-                image inside a paragraph — won't move on its own
+                image inside a paragraph — lift it out to move it
               </span>
               <button
                 type="button"
@@ -187,28 +193,28 @@ export default function ImageOrganizer({ content, onContentChange }) {
         </React.Fragment>
       ))}
 
-      {/* final drop zone at the very end */}
+      {/* final drop zone at the very end — same tall target as the others */}
       <div
         onDragOver={(e) => {
-          if (dragging === null) return;
+          if (draggingId === null) return;
           e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
           setOverIndex(blocks.length);
         }}
-        onDragLeave={() => setOverIndex((v) => (v === blocks.length ? null : v))}
         onDrop={(e) => {
           e.preventDefault();
-          if (dragging !== null && dragging !== blocks.length - 1) {
-            onContentChange(moveBlock(content, dragging, blocks.length - 1));
+          const from = e.dataTransfer.getData('text/organizer-index');
+          const fromIdx = from === '' ? draggingId : Number(from);
+          if (fromIdx !== null && fromIdx !== blocks.length - 1) {
+            onContentChange(moveBlock(content, fromIdx, blocks.length));
           }
-          setDragging(null);
+          setDraggingId(null);
           setOverIndex(null);
         }}
-        className={`h-1.5 rounded-full transition-all ${
-          dragging !== null && overIndex === blocks.length
-            ? 'bg-primary h-3'
-            : dragging !== null
-              ? 'bg-muted-foreground/15'
-              : ''
+        className={`rounded-full transition-all ${
+          draggingId !== null
+            ? `my-1 ${overIndex === blocks.length ? 'h-6 bg-primary/80 ring-2 ring-primary/30' : 'h-4 bg-muted-foreground/20'}`
+            : 'h-1.5'
         }`}
       />
     </div>

@@ -10,7 +10,8 @@ import {
   LogOut,
   Activity,
   ClipboardList,
-  Flame
+  Flame,
+  Zap,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { api } from '../api';
@@ -28,6 +29,7 @@ function Sidebar({ isOpen, toggleSidebar }) {
         { path: '/articles', icon: FileText, label: 'Articles' },
         { path: '/gallery', icon: Upload, label: 'Gallery' },
         { path: '/hot-takes', icon: Flame, label: 'Hot Takes' },
+        { path: '/instants', icon: Zap, label: 'Instants' },
         { path: '/health', icon: Activity, label: 'System Health' },
         { path: '/audit-logs', icon: ClipboardList, label: 'Audit Logs' },
         { path: '/settings', icon: SettingsIcon, label: 'Settings' },

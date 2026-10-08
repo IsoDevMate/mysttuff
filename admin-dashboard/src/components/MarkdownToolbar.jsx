@@ -3,8 +3,9 @@ import {
   Heading1, Heading2, Heading3, Heading4,
   Bold, Italic, Strikethrough, Quote, Code, Code2,
   Link, Image, Table, Minus, List, ListOrdered,
+  Undo2, Redo2,
 } from 'lucide-react';
-import { MARKDOWN_SNIPPETS, applySnippet } from '../utils/markdownEditor';
+import { MARKDOWN_SNIPPETS, applySnippet, toggleList } from '../utils/markdownEditor';
 
 const TOOL_GROUPS = [
   {
@@ -31,21 +32,21 @@ const TOOL_GROUPS = [
       { id: 'quote', icon: Quote, title: 'Blockquote', snippet: MARKDOWN_SNIPPETS.blockquote },
       { id: 'codeBlock', icon: Code2, title: 'Code block', snippet: MARKDOWN_SNIPPETS.codeBlock },
       { id: 'table', icon: Table, title: 'Table', snippet: MARKDOWN_SNIPPETS.table },
-      { id: 'hr', icon: Minus, title: 'Horizontal rule', snippet: MARKDOWN_SNIPPETS.hr },
-      { id: 'ul', icon: List, title: 'Bullet list', snippet: MARKDOWN_SNIPPETS.ul },
-      { id: 'ol', icon: ListOrdered, title: 'Numbered list', snippet: MARKDOWN_SNIPPETS.ol },
-      { id: 'link', icon: Link, title: 'Link', snippet: MARKDOWN_SNIPPETS.link },
+      { id: 'hr', icon: Minus, title: 'Horizontal rule', snippet: MARKDOWN_SNIPPETS.hr },      {id: 'ul', icon: List, title: 'Bullet list', snippet: null},
+      {id: 'ol', icon: ListOrdered, title: 'Numbered list', snippet: null},
+      {id: 'link', icon: Link, title: 'Link', snippet: MARKDOWN_SNIPPETS.link},
     ],
   },
 ];
 
-function ToolbarButton({ icon: Icon, title, onClick, active }) {
+function ToolbarButton({ icon: Icon, title, onClick, active, disabled }) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={title}
-      className={`p-1.5 rounded hover:bg-muted transition-colors ${
+      disabled={disabled}
+      className={`p-1.5 rounded hover:bg-muted transition-colors disabled:opacity-30 disabled:hover:bg-transparent ${
         active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
       }`}
     >
@@ -54,14 +55,14 @@ function ToolbarButton({ icon: Icon, title, onClick, active }) {
   );
 }
 
-export default function MarkdownToolbar({ textareaRef, onContentChange, onImageClick }) {
+export default function MarkdownToolbar({ textareaRef, onContentChange, onImageClick, onUndo, onRedo, canUndo, canRedo }) {
   const [codeLang, setCodeLang] = useState('javascript');
 
   const apply = (snippet) => {
     const el = textareaRef?.current;
     if (!el) return;
     const result = applySnippet(el, snippet);
-    onContentChange(result.newValue);
+    onContentChange(result.newValue, { immediate: true });
     requestAnimationFrame(() => {
       el.focus();
       if (result.selectStart !== undefined) {
@@ -69,6 +70,30 @@ export default function MarkdownToolbar({ textareaRef, onContentChange, onImageC
       } else {
         el.setSelectionRange(result.cursorPos, result.cursorPos);
       }
+    });
+  };
+
+  // Toggle list markers across selected lines (or insert starters when empty)
+  const applyList = (marker) => {
+    const el = textareaRef?.current;
+    if (!el) return;
+    const result = toggleList(el, marker);
+    if (result === null) {
+      const fallback = marker === '- '
+        ? '\n- List item\n- List item\n'
+        : '\n1. First item\n2. Second item\n';
+      const ins = applySnippet(el, { type: 'insert', value: fallback });
+      onContentChange(ins.newValue, { immediate: true });
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(ins.cursorPos, ins.cursorPos);
+      });
+      return;
+    }
+    onContentChange(result.newValue, { immediate: true });
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(result.selectStart, result.selectEnd);
     });
   };
 
@@ -80,7 +105,7 @@ export default function MarkdownToolbar({ textareaRef, onContentChange, onImageC
       value: `\n\`\`\`${codeLang}\n// your code here\n\`\`\`\n`,
     };
     const result = applySnippet(el, snippet);
-    onContentChange(result.newValue);
+    onContentChange(result.newValue, { immediate: true });
     requestAnimationFrame(() => {
       el.focus();
       el.setSelectionRange(result.cursorPos, result.cursorPos);
@@ -99,9 +124,22 @@ export default function MarkdownToolbar({ textareaRef, onContentChange, onImageC
               key={tool.id}
               icon={tool.icon}
               title={tool.title}
-              onClick={() => apply(tool.snippet)}
+              onClick={() =>
+                tool.id === 'ul'
+                  ? applyList('- ')
+                  : tool.id === 'ol'
+                    ? applyList('1. ')
+                    : apply(tool.snippet)
+              }
             />
           ))}
+          {group.label === 'Format' && (
+            <>
+              <span className="w-2" />
+              <ToolbarButton icon={Undo2} title="Undo (Ctrl+Z)" onClick={onUndo ?? (() => {})} disabled={!canUndo} />
+              <ToolbarButton icon={Redo2} title="Redo (Ctrl+Shift+Z / Ctrl+Y)" onClick={onRedo ?? (() => {})} disabled={!canRedo} />
+            </>
+          )}
         </div>
       ))}
 

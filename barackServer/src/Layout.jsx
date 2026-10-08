@@ -3,6 +3,7 @@ import { useState } from "react";
 import { createPageUrl } from "./lib/utils";
 import ThemeCustomizer from "./components/settings/ThemeCustomizer";
 import DesignPresets from "./components/settings/DesignPresets";
+import InstantsWidget from "./components/instants/InstantsWidget";
 import { Menu, X } from "lucide-react";
 
 const NAV_LINKS = [
@@ -102,6 +103,9 @@ export default function Layout({ children, currentPageName }) {
       <main className="pt-20">
         {children}
       </main>
+
+      {/* Locket-style realtime capture feed — floats on every page */}
+      <InstantsWidget />
       
       <footer className="border-t mt-20" style={{ borderColor: 'var(--text-color, #292524)' + '20' }}>
         <div className="max-w-3xl mx-auto px-6 py-8">

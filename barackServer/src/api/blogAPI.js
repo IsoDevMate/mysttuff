@@ -40,6 +40,28 @@ class BlogAPI {
   async getHotTakes() {
     return this.request('/hot-takes');
   }
+
+  async getInstants(limit = 50) {
+    return this.request(`/instants?limit=${limit}`);
+  }
+
+  async getThoughts(instantId) {
+    return this.request(`/instants/${instantId}/thoughts`);
+  }
+
+  async postThought(instantId, thought) {
+    return this.request(`/instants/${instantId}/thoughts`, {
+      method: "POST",
+      body: JSON.stringify(thought),
+    });
+  }
+
+  async joinWaitlist(email, name) {
+    return this.request("/waitlist", {
+      method: "POST",
+      body: JSON.stringify({ email, name }),
+    });
+  }
 }
 
 export const blogAPI = new BlogAPI();
