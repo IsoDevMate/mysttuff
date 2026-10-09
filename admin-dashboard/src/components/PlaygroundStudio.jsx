@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api';
 import toast from 'react-hot-toast';
+import PhotoCanvas from './PhotoCanvas';
 import {
     FileText, Zap, Sparkles, CornerDownLeft, Image as ImageIcon,
     PenLine, ChevronRight, X, Clock, Flame, ArrowUpRight,
@@ -33,6 +35,8 @@ function routeCommand(text, articles) {
 
 function PlaygroundStudio() {
     const navigate = useNavigate();
+    // Photo canvas: {} = fresh create, {…gallery item} = edit that arrangement.
+    const [canvasItem, setCanvasItem] = useState(null); // null = closed
     // Respect the OS motion preference (framer-motion's version isn't exported
     // in this build, so a plain media query is safer).
     const [reduceMotion, setReduceMotion] = useState(false);
@@ -84,7 +88,20 @@ function PlaygroundStudio() {
             all.push({ id: `cover-${c.id}`, kind: 'cover', title: c.title, sub: 'published with no cover image — give it one?', to: `/articles/${c.id}`, icon: ImageIcon });
         }
         if (gallery.length > 0) {
-            all.push({ id: 'gallery-breathe', kind: 'gallery', title: `${gallery.length} photos in the gallery`, sub: 'rearrange, recaption, or set a new vibe', to: '/gallery', icon: ImageIcon });
+            // Open the most interesting gallery item (largest batch) on the canvas.
+            const richest = [...gallery].sort((a, b) =>
+                (b.media ? JSON.parse(b.media).length : 0) - (a.media ? JSON.parse(a.media).length : 0))[0];
+            all.push({
+                id: `gallery-canvas-${richest?.id || 'any'}`,
+                kind: 'gallery',
+                title: richest?.title || `${gallery.length} photos waiting`,
+                sub: 'open on the photo canvas — drag, rearrange, new cover',
+                to: null, // handled specially — opens the canvas, not a route
+                icon: ImageIcon,
+                galleryItem: richest || null,
+            });
+            // The quieter one: browsing the full gallery list.
+            all.push({ id: 'gallery-breathe', kind: 'gallery', title: `${gallery.length} photos in the gallery`, sub: 'see the whole gallery as visitors do', to: '/gallery', icon: ImageIcon });
         }
         const reactionTotal = Object.values(reactionSummary).reduce((s, list) => s + list.reduce((x, r) => x + Number(r.count || 0), 0), 0);
         if (reactionTotal > 0) {
@@ -162,7 +179,7 @@ function PlaygroundStudio() {
             <div className="flex flex-wrap gap-2 mb-10">
                 {[
                     { label: 'write an article', icon: FileText, to: '/articles/new' },
-                    { label: 'drop photos', icon: ImageIcon, to: '/gallery' },
+                    { label: 'drop photos', icon: ImageIcon, canvas: true },
                     { label: 'capture a moment', icon: Zap, to: '/instants' },
                 ].map((leap, i) => (
                     <motion.button
@@ -170,7 +187,7 @@ function PlaygroundStudio() {
                         initial={reduceMotion ? false : { opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.15 + i * 0.05 }}
-                        onClick={() => navigate(leap.to)}
+                        onClick={() => (leap.canvas ? setCanvasItem({}) : navigate(leap.to))}
                         className="flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-body hover:bg-accent active:scale-95 transition-transform"
                     >
                         <leap.icon className="w-4 h-4" /> {leap.label}
@@ -205,7 +222,7 @@ function PlaygroundStudio() {
                                     >
                                         <X className="w-3.5 h-3.5" />
                                     </button>
-                                    <button onClick={() => navigate(s.to)} className="text-left w-full">
+                                    <button onClick={() => (s.to ? navigate(s.to) : setCanvasItem(s.galleryItem || {}))} className="text-left w-full">
                                         <div className="flex items-start gap-3">
                                             <s.icon className="w-4 h-4 mt-0.5 text-muted-foreground" />
                                             <div className="min-w-0">
@@ -274,6 +291,25 @@ function PlaygroundStudio() {
                 <Clock className="w-3 h-3" />
                 <span>the classic board is still under /articles if you miss it</span>
             </p>
+
+            {/* ── the photo canvas (temporary full-screen workspace) ── */}
+            {/* canvas mounts at the React root so the studio's AnimatePresence
+                remounts (StrictMode dev double-mount) can never unmount it */}
+            {createPortal(
+                <AnimatePresence>
+                    {canvasItem !== null && (
+                        <PhotoCanvas
+                            key={canvasItem.id || 'new'}
+                            item={canvasItem.id ? canvasItem : null}
+                            onClose={() => setCanvasItem(null)}
+                            onSaved={() => {
+                                api.getGallery().then((g) => setGallery(g || [])).catch(() => {});
+                            }}
+                        />
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
         </div>
     );
 }
