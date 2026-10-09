@@ -1,9 +1,11 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
-import { ArrowLeft, Zap } from "lucide-react";
+import { format, isToday, isThisWeek } from "date-fns";
+import { ArrowLeft, Zap, Heart } from "lucide-react";
+
+const BASE = (import.meta.env.VITE_API_URL || "http://localhost:3001/api").replace(/\/$/, "");
 
 const MONTHS_ORDER_RECENT_FIRST = (a, b) => (a < b ? 1 : -1);
 
@@ -23,6 +25,81 @@ export default function Recap() {
       return res.json();
     },
   });
+
+  // ── Creator-only grid: Today / This week with real reaction counts ──
+  // The admin token doubles as the creator key (same as the capture flow).
+  const isAdmin = !!localStorage.getItem("adminToken");
+  const [reactions, setReactions] = useState({});
+  useEffect(() => {
+    if (!isAdmin || !all.length) return;
+    let alive = true;
+    fetch(`${BASE}/admin/reaction-summary`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("adminToken")}` },
+    })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((data) => alive && setReactions(data || {}))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [isAdmin, all.length]);
+
+  const { today, thisWeek } = useMemo(() => {
+    const withCount = (i) =>
+      (reactions[i.id] || []).reduce((sum, r) => sum + Number(r.count || 0), 0);
+    const parse = (i) => new Date(i.created_at.endsWith("Z") ? i.created_at : i.created_at + "Z");
+    const sorted = [...all].sort((a, b) => parse(b) - parse(a));
+    return {
+      today: sorted.filter((i) => isToday(parse(i))),
+      thisWeek: sorted.filter((i) => !isToday(parse(i)) && isThisWeek(parse(i), { weekStartsOn: 1 })),
+    };
+  }, [all, reactions]);
+
+  const creatorGrid = (title, items) =>
+    items.length === 0 ? null : (
+      <section className="mb-10 rounded-2xl border p-5" style={{ borderColor: "var(--text-color, #292524)" + "20", backgroundColor: "var(--text-color, #292524)" + "04" }}>
+        <div className="flex items-baseline gap-3 mb-4">
+          <h2 className="font-serif-display text-xl font-bold">{title}</h2>
+          <span className="font-body text-xs opacity-40">{items.length} · your private view</span>
+        </div>
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+          {items.map((i) => {
+            const rcs = reactions[i.id] || [];
+            const total = rcs.reduce((s, r) => s + Number(r.count || 0), 0);
+            const top = rcs.slice().sort((a, b) => b.count - a.count)[0];
+            return (
+              <Link
+                key={i.id}
+                to={createPageUrl("Gallery")}
+                className="relative rounded-[20px] overflow-hidden group aspect-[4/5]"
+                style={{ backgroundColor: "var(--text-color, #292524)" + "08" }}
+                title={i.text || ""}
+              >
+                {i.image_url ? (
+                  <img src={i.image_url} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105" />
+                ) : (
+                  <div className="absolute inset-0 p-2.5 flex items-center">
+                    <p className="text-[10px] leading-snug line-clamp-5 whitespace-pre-wrap break-words font-body">{i.text}</p>
+                  </div>
+                )}
+                {total > 0 && (
+                  <span
+                    className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-body text-white"
+                    style={{ background: "rgba(0,0,0,0.55)" }}
+                  >
+                    {top?.emoji} {rcs.find((r) => r.emoji === top?.emoji)?.count}
+                    {rcs.length > 1 && <span style={{ marginLeft: 2 }}><Heart className="w-2.5 h-2.5 inline" /> {total}</span>}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+        <p className="font-body text-[10px] opacity-35 mt-3">
+          reaction counts update as visitors respond · compile these into a recap when the moment feels right
+        </p>
+      </section>
+    );
 
   const groups = useMemo(() => {
     const byMonth = {};
@@ -49,6 +126,13 @@ export default function Recap() {
           recent ones; this is the whole story.
         </p>
       </header>
+
+      {isAdmin && (today.length > 0 || thisWeek.length > 0) && (
+        <div className="mb-8">
+          {creatorGrid("today", today)}
+          {creatorGrid("this week", thisWeek)}
+        </div>
+      )}
 
       {isLoading || (!all.length && !groups.length) ? (
         <div className="space-y-6">
