@@ -72,9 +72,10 @@ export default function Layout({ children, currentPageName }) {
 
           {/* Mobile hamburger */}
           <button
-            className="md:hidden p-2 -mr-2"
+            className="md:hidden h-11 w-11 -mr-2 inline-flex items-center justify-center rounded-md transition-colors hover:bg-black/5"
             onClick={() => setMenuOpen((v) => !v)}
             aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={menuOpen}
           >
             {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -89,7 +90,7 @@ export default function Layout({ children, currentPageName }) {
                   key={page}
                   to={createPageUrl(page)}
                   onClick={() => setMenuOpen(false)}
-                  className={`py-2.5 border-b last:border-b-0 transition-opacity ${
+                  className={`min-h-11 py-2.5 border-b last:border-b-0 inline-flex items-center transition-opacity ${
                     currentPageName === page ? 'opacity-100 font-medium' : 'opacity-60'
                   }`}
                   style={{ borderColor: 'var(--text-color, #292524)' + '10' }}
@@ -132,9 +133,14 @@ export default function Layout({ children, currentPageName }) {
       
       <footer className="border-t mt-20" style={{ borderColor: 'var(--text-color, #292524)' + '20' }}>
         <div className="max-w-3xl mx-auto px-6 py-8">
-          <p className="font-body text-xs opacity-40 text-center">
-            just putting stuff here
-          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="font-body text-sm opacity-55">A personal archive of writing, photo stories, and passing moments.</p>
+            <nav aria-label="Legal information" className="flex items-center gap-5 font-body text-sm">
+              <Link to="/Terms" className="min-h-11 inline-flex items-center opacity-65 hover:opacity-100 transition-opacity">Terms</Link>
+              <Link to="/Privacy" className="min-h-11 inline-flex items-center opacity-65 hover:opacity-100 transition-opacity">Privacy</Link>
+            </nav>
+          </div>
+          <p className="font-body text-xs opacity-40 text-center mt-6">Personal site · updated as it grows</p>
         </div>
       </footer>
     </div>

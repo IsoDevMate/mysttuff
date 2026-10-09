@@ -135,15 +135,18 @@ const Gallery = () => {
         }
     };
 
-    if (loading) return <div className="p-6">Loading...</div>;
+    if (loading) return <div aria-label="Loading gallery" className="max-w-6xl mx-auto space-y-5 animate-pulse p-2"><div className="h-9 w-40 rounded bg-muted" /><div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{[1, 2, 3].map((item) => <div key={item} className="aspect-video rounded-xl bg-muted" />)}</div></div>;
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold">Gallery</h1>
+            <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Visual stories</p>
+                    <h1 className="font-display text-3xl font-semibold">Gallery</h1>
+                </div>
                 <Button onClick={() => (showAddForm ? cancelEdit() : setShowAddForm(true))}>
                     <Plus className="mr-2 h-4 w-4" />
-                    Add Item
+                    Add story
                 </Button>
             </div>
 
@@ -160,7 +163,7 @@ const Gallery = () => {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <Label htmlFor="title">Title</Label>
                                 <Input
@@ -218,7 +221,8 @@ const Gallery = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => removeMedia(i)}
-                                                className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                aria-label={`Remove media ${i + 1}`}
+                                                className="absolute top-1 right-1 h-11 w-11 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center"
                                             >
                                                 <X className="h-3 w-3" />
                                             </button>
@@ -248,21 +252,27 @@ const Gallery = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {gallery.map((item) => (
                     <Card key={item.id} className="overflow-hidden">
-                        <div className="aspect-video relative">
-                            <img
-                                src={item.image_url}
-                                alt={item.title}
-                                className="w-full h-full object-cover"
-                            />
+                        <div className="aspect-video relative group/media">
+                            {item.image_url && /\.(mp4|webm|mov)(\?|$)/i.test(item.image_url) ? (
+                                <video src={item.image_url} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+                            ) : item.image_url ? (
+                                <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                            ) : (
+                                <div className="w-full h-full bg-muted flex items-center justify-center text-muted-foreground">
+                                    <Film className="h-8 w-8" aria-hidden="true" />
+                                    <span className="sr-only">No cover media</span>
+                                </div>
+                            )}
                             {(parseMedia(item.media).some(m => m.type === 'video')) && (
                                 <span className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded flex items-center gap-1">
                                     <Film className="h-3 w-3" /> video
                                 </span>
                             )}
-                            <div className="absolute top-2 right-2 flex gap-1">
+                            <div className="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover/media:opacity-100 sm:group-focus-within/media:opacity-100 transition-opacity">
                                 <Button
                                     variant="secondary"
-                                    size="sm"
+                                    size="icon"
+                                    aria-label={`Edit ${item.title}`}
                                     onClick={() => startEdit(item)}
                                     title="Edit this item"
                                 >
@@ -270,7 +280,8 @@ const Gallery = () => {
                                 </Button>
                                 <Button
                                     variant="destructive"
-                                    size="sm"
+                                    size="icon"
+                                    aria-label={`Delete ${item.title}`}
                                     onClick={() => deleteGalleryItem(item.id)}
                                 >
                                     <Trash2 className="h-4 w-4" />
@@ -280,9 +291,9 @@ const Gallery = () => {
                         <CardContent className="p-4">
                             <h3 className="font-semibold mb-2">{item.title}</h3>
                             {item.description && (
-                                <p className="text-sm text-gray-600 mb-2">{item.description}</p>
+                                <p className="text-sm text-muted-foreground mb-2">{item.description}</p>
                             )}
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-muted-foreground">
                                 {new Date(item.date).toLocaleDateString()}
                             </p>
                         </CardContent>
@@ -293,9 +304,9 @@ const Gallery = () => {
             {gallery.length === 0 && (
                 <div className="text-center py-12">
                     <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                    <p className="text-gray-500 mb-4">No gallery items yet</p>
+                    <p className="text-muted-foreground mb-4">No photo stories yet.</p>
                     <Button onClick={() => setShowAddForm(true)}>
-                        Add your first gallery item
+                        Add a story
                     </Button>
                 </div>
             )}

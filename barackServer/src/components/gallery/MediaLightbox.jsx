@@ -55,7 +55,7 @@ export default function MediaLightbox({ item, media = [], initialIndex = 0, onCl
         <button
           onClick={onClose}
           aria-label="Close"
-          className="p-2 rounded-full transition-colors hover:bg-white/10"
+          className="flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-white/10"
           style={{ color: "#f0ebe3" }}
         >
           <X className="w-5 h-5" />
@@ -74,7 +74,7 @@ export default function MediaLightbox({ item, media = [], initialIndex = 0, onCl
           }}
           disabled={index === 0}
           aria-label="Previous"
-          className="absolute left-4 sm:left-8 p-2 rounded-full disabled:opacity-20 enabled:hover:bg-white/10 transition-colors"
+          className="absolute left-4 sm:left-8 flex h-11 w-11 items-center justify-center rounded-full disabled:opacity-20 enabled:hover:bg-white/10 transition-colors"
           style={{ color: "#f0ebe3" }}
         >
           <ChevronLeft className="w-7 h-7" />
@@ -114,7 +114,7 @@ export default function MediaLightbox({ item, media = [], initialIndex = 0, onCl
           }}
           disabled={index === media.length - 1}
           aria-label="Next"
-          className="absolute right-4 sm:right-8 p-2 rounded-full disabled:opacity-20 enabled:hover:bg-white/10 transition-colors"
+          className="absolute right-4 sm:right-8 flex h-11 w-11 items-center justify-center rounded-full disabled:opacity-20 enabled:hover:bg-white/10 transition-colors"
           style={{ color: "#f0ebe3" }}
         >
           <ChevronRight className="w-7 h-7" />
@@ -129,7 +129,7 @@ export default function MediaLightbox({ item, media = [], initialIndex = 0, onCl
               key={i}
               onClick={() => setIndex(i)}
               aria-label={`Media ${i + 1}`}
-              className="h-1.5 rounded-full transition-all"
+              className="h-11 min-w-11 rounded-full transition-all relative after:absolute after:inset-x-0 after:top-1/2 after:h-1.5 after:-translate-y-1/2 after:rounded-full"
               style={{
                 width: i === index ? 24 : 6,
                 backgroundColor: "#f0ebe3",

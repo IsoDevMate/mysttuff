@@ -1,51 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    color-scheme: light;
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-display: 'Playfair Display', Georgia, serif;
+    --font-code: 'JetBrains Mono', ui-monospace, monospace;
+    --background: 39 58% 95%;
+    --foreground: 24 14% 16%;
+    --card: 40 62% 98%;
+    --card-foreground: 24 14% 16%;
+    --popover: 40 62% 98%;
+    --popover-foreground: 24 14% 16%;
+    --primary: 24 13% 29%;
+    --primary-foreground: 40 62% 98%;
+    --secondary: 35 29% 89%;
+    --secondary-foreground: 24 14% 20%;
+    --muted: 36 31% 91%;
+    --muted-foreground: 25 9% 42%;
+    --accent: 35 37% 86%;
+    --accent-foreground: 24 14% 18%;
+    --destructive: 4 58% 43%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 33 20% 81%;
+    --input: 33 20% 78%;
+    --ring: 24 13% 38%;
+    --radius: 0.75rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 94.1%;
+    color-scheme: dark;
+    --background: 24 13% 11%;
+    --foreground: 38 34% 91%;
+    --card: 24 12% 15%;
+    --card-foreground: 38 34% 91%;
+    --popover: 24 12% 15%;
+    --popover-foreground: 38 34% 91%;
+    --primary: 35 29% 78%;
+    --primary-foreground: 24 15% 13%;
+    --secondary: 24 12% 21%;
+    --secondary-foreground: 38 34% 91%;
+    --muted: 24 11% 19%;
+    --muted-foreground: 34 12% 67%;
+    --accent: 24 12% 25%;
+    --accent-foreground: 38 34% 91%;
+    --destructive: 4 49% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 24 10% 29%;
+    --input: 24 10% 32%;
+    --ring: 35 29% 70%;
   }
 }
 
@@ -53,8 +60,59 @@
   * {
     @apply border-border;
   }
+  html {
+    font-family: var(--font-ui);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1 {
+    font-family: var(--font-display);
+    letter-spacing: -0.035em;
+  }
+  h2 {
+    letter-spacing: -0.025em;
+  }
+  code,
+  kbd,
+  .font-code {
+    font-family: var(--font-code);
+  }
+  .font-display {
+    font-family: var(--font-display);
+  }
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+.admin-page-enter {
+  animation: admin-page-enter 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes admin-page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

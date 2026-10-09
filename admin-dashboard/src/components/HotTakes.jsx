@@ -98,23 +98,22 @@ const HotTakes = () => {
     }
   };
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (loading) return <div aria-label="Loading hot takes" className="space-y-4 animate-pulse p-2"><div className="h-10 w-48 rounded bg-muted" />{[1, 2, 3].map((item) => <div key={item} className="h-24 rounded-xl bg-muted" />)}</div>;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Flame className="h-7 w-7 text-orange-500" /> AI Hot Takes
-        </h1>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Short opinions</p>
+          <h1 className="font-display text-3xl font-semibold">Hot takes</h1>
+        </div>
         <Button onClick={() => setShowAdd(!showAdd)}>
           <Plus className="mr-2 h-4 w-4" /> Add Take
         </Button>
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Short takes shown on the public Blog page. Link one to an article and clicking the take
-        sends readers straight to that post. They're a standalone list, so you can spin them off
-        into their own page later.
+        Short takes appear on the public writing page. Link a take to an article to send readers straight to the full piece.
       </p>
 
       {showAdd && (
@@ -130,7 +129,7 @@ const HotTakes = () => {
                 value={newTake.take}
                 onChange={(e) => setNewTake((prev) => ({ ...prev, take: e.target.value }))}
                 placeholder="A spicy one-liner about AI…"
-                className="w-full p-3 border rounded-lg h-20 resize-none bg-background text-foreground text-sm"
+                className="w-full min-h-20 p-3 border border-input rounded-lg resize-none bg-background text-foreground text-base"
               />
             </div>
             <div>
@@ -139,7 +138,7 @@ const HotTakes = () => {
                 id="take-link"
                 value={newTake.article_slug}
                 onChange={(e) => setNewTake((prev) => ({ ...prev, article_slug: e.target.value }))}
-                className="w-full h-9 border rounded-md bg-background text-sm px-2"
+                className="w-full min-h-11 border border-input rounded-md bg-background text-base sm:text-sm px-3"
               >
                 <option value="">— no link —</option>
                 {articles.map((a) => (
@@ -182,7 +181,7 @@ const HotTakes = () => {
             <Card key={take.id}>
               <CardContent className="py-4">
                 <div className="flex items-start gap-3">
-                  <Flame className="h-4 w-4 text-orange-500 mt-1 shrink-0" />
+                  <Flame className="h-4 w-4 text-muted-foreground mt-1 shrink-0" />
                   <div className="flex-1 min-w-0">
                     {editingId === take.id ? (
                       <div className="flex items-start gap-2">
@@ -208,7 +207,7 @@ const HotTakes = () => {
                     ) : (
                       <p className="text-sm">{take.take}</p>
                     )}
-                    <div className="flex items-center gap-3 mt-2">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mt-3 min-w-0">
                       {take.article_slug ? (
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Link2 className="h-3 w-3" /> → {take.article_slug}
@@ -219,7 +218,7 @@ const HotTakes = () => {
                       <select
                         value={take.article_slug || ''}
                         onChange={(e) => updateTake(take.id, { article_slug: e.target.value || null })}
-                        className="text-xs border rounded px-1.5 py-0.5 bg-background h-6"
+                        className="min-h-11 max-w-full min-w-0 text-sm border border-input rounded-md px-2.5 bg-background"
                       >
                         <option value="">— no link —</option>
                         {articles.map((a) => (
@@ -228,9 +227,10 @@ const HotTakes = () => {
                           </option>
                         ))}
                       </select>
-                      <label className="flex items-center gap-1 text-xs cursor-pointer">
+                      <label className="min-h-11 flex items-center gap-2 text-sm cursor-pointer">
                         <input
                           type="checkbox"
+                          className="h-4 w-4"
                           checked={take.published === 1 || take.published === true}
                           onChange={(e) => updateTake(take.id, { published: e.target.checked })}
                         />
@@ -238,8 +238,8 @@ const HotTakes = () => {
                       </label>
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="h-6 px-1.5 hover:text-blue-600"
+                        size="icon"
+                        aria-label="Edit hot take"
                         title="Edit take text"
                         onClick={() => startEdit(take)}
                       >
@@ -247,8 +247,9 @@ const HotTakes = () => {
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="h-6 px-1.5 text-red-500 hover:text-red-600"
+                        size="icon"
+                        className="text-destructive hover:text-destructive"
+                        aria-label="Delete hot take"
                         onClick={() => deleteTake(take.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />

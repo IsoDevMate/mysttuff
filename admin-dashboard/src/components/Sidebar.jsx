@@ -47,17 +47,18 @@ function Sidebar({ isOpen, toggleSidebar }) {
             {/* Desktop Sidebar */}
             <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
                 <div className="flex min-h-0 flex-1 flex-col bg-card border-r border-border">
-                    <div className="flex items-center justify-between p-6 border-b">
-                        <h2 className="text-xl font-bold">Blog Admin</h2>
+                    <div className="p-6 border-b border-border/80">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">creator studio</p>
+                        <h2 className="font-display text-2xl font-semibold tracking-tight">mysttuff</h2>
                     </div>
 
-                    <nav className="flex-1 p-4 space-y-2">
+                    <nav className="flex-1 p-4 space-y-1.5">
                         {menuItems.map((item) => (
                             <Link key={item.path} to={item.path}>
-                                <div className={`flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+                                <div className={`flex min-h-11 items-center space-x-3 px-3 rounded-lg transition-colors ${
                                     location.pathname === item.path
-                                        ? 'bg-primary text-primary-foreground'
-                                        : 'hover:bg-accent hover:text-accent-foreground'
+                                        ? 'bg-primary/10 text-primary font-medium'
+                                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                                 }`}>
                                     <item.icon className="h-5 w-5" />
                                     <span>{item.label}</span>
@@ -83,25 +84,33 @@ function Sidebar({ isOpen, toggleSidebar }) {
             <motion.div
                 variants={sidebarVariants}
                 animate={isOpen ? "open" : "closed"}
+                role="dialog"
+                aria-modal={isOpen ? 'true' : undefined}
+                aria-label="Studio navigation"
+                aria-hidden={!isOpen}
+                inert={!isOpen ? '' : undefined}
                 className="fixed left-0 top-0 z-40 h-full w-64 bg-card border-r border-border shadow-lg lg:hidden"
             >
-                <div className="flex items-center justify-between p-6 border-b">
-                    <h2 className="text-xl font-bold">Blog Admin</h2>
-                    <Button variant="ghost" size="icon" onClick={toggleSidebar}>
+                <div className="flex items-center justify-between p-6 border-b border-border/80">
+                    <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">creator studio</p>
+                        <h2 className="font-display text-xl font-semibold">mysttuff</h2>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Close navigation">
                         <X className="h-4 w-4" />
                     </Button>
                 </div>
 
-                <nav className="p-4 space-y-2">
+                <nav id="mobile-studio-navigation" className="p-4 space-y-1.5">
                     {menuItems.map((item) => (
                         <Link key={item.path} to={item.path} onClick={toggleSidebar}>
                             <motion.div
                                 whileHover={{ x: 4 }}
                                 whileTap={{ scale: 0.98 }}
-                                className={`flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+                                className={`flex min-h-11 items-center space-x-3 px-3 rounded-lg transition-colors ${
                                     location.pathname === item.path
-                                        ? 'bg-primary text-primary-foreground'
-                                        : 'hover:bg-accent hover:text-accent-foreground'
+                                        ? 'bg-primary/10 text-primary font-medium'
+                                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                                 }`}
                             >
                                 <item.icon className="h-5 w-5" />

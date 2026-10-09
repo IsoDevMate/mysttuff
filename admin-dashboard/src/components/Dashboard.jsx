@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Users, FileText, BarChart3, Upload, Plus, Edit, Trash2 } from 'lucide-react';
@@ -57,30 +56,39 @@ function Dashboard() {
     };
 
     const stats = [
-        { title: "Total Articles", value: articles.length, icon: FileText },
+        { title: "Articles", value: articles.length, icon: FileText },
         { title: "Published", value: articles.filter(a => a.published).length, icon: BarChart3 },
         { title: "Drafts", value: articles.filter(a => !a.published).length, icon: Edit },
-        { title: "Gallery Items", value: gallery.length, icon: Upload }
+        { title: "Photo stories", value: gallery.length, icon: Upload }
     ];
 
     // Creative playground (flag-gated): the studio home replaces the stats wall.
     if (playground) return <PlaygroundStudio />;
-    // flag still resolving → show nothing yet to avoid the stats wall flash
-    if (playground === null) return null;
+    // Keep the shell quiet while rollout state resolves, then show a real loader.
+    if (playground === null) return <div aria-label="Loading creator studio" className="space-y-5 animate-pulse"><div className="h-12 w-72 rounded bg-muted" /><div className="h-24 rounded-xl bg-muted" /><div className="grid gap-3 sm:grid-cols-2"><div className="h-28 rounded-xl bg-muted" /><div className="h-28 rounded-xl bg-muted" /></div></div>;
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold">Blog Management</h1>
-                <Button onClick={() => navigate('/articles/new')} className="bg-blue-600 hover:bg-blue-700">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Your writing</p>
+                    <h1 className="font-display text-3xl font-semibold">Studio overview</h1>
+                </div>
+                <Button onClick={() => navigate('/articles/new')}>
                     <Plus className="mr-2 h-4 w-4" />
-                    New Article
+                    New article
                 </Button>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                {stats.map((stat, index) => (
-                    <Card key={stat.title} className="hover:shadow-lg transition-shadow">
+            {loading ? (
+                <div aria-label="Loading dashboard data" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-pulse">
+                    {[1, 2, 3, 4].map((item) => <div key={item} className="h-28 rounded-xl bg-muted" />)}
+                </div>
+            ) : (
+            <>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {stats.map((stat) => (                        <Card key={stat.title} className="transition-colors hover:border-primary/40">
+
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium text-muted-foreground">
                                 {stat.title}
@@ -94,11 +102,11 @@ function Dashboard() {
                 ))}
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid gap-4 lg:grid-cols-3">
                 <div className="lg:col-span-2">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle>Recent Articles</CardTitle>
+                            <CardTitle>Recent writing</CardTitle>
                             <Button variant="outline" size="sm" onClick={() => navigate('/articles')}>
                                 View All
                             </Button>
@@ -106,26 +114,28 @@ function Dashboard() {
                         <CardContent>
                             <div className="space-y-4">
                                 {articles.slice(0, 5).map((article) => (
-                                    <div key={article.id} className="flex items-center justify-between p-3 border rounded-lg">
-                                        <div className="flex-1">
+                                    <div key={article.id} className="flex items-center justify-between gap-3 p-3 border rounded-lg">
+                                        <div className="flex-1 min-w-0">
                                             <h3 className="font-medium">{article.title}</h3>
-                                            <p className="text-sm text-gray-500">
+                                            <p className="text-sm text-muted-foreground">
                                                 {article.published ? 'Published' : 'Draft'} • {new Date(article.created_at).toLocaleDateString()}
                                             </p>
                                         </div>
                                         <div className="flex space-x-2">
-                                            <Button 
-                                                variant="outline" 
-                                                size="sm"
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                aria-label={`Edit ${article.title}`}
                                                 onClick={() => navigate(`/articles/${article.id}`)}
                                             >
                                                 <Edit className="h-4 w-4" />
                                             </Button>
-                                            <Button 
-                                                variant="outline" 
-                                                size="sm"
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                aria-label={`Delete ${article.title}`}
                                                 onClick={() => deleteArticle(article.id)}
-                                                className="text-red-600 hover:text-red-700"
+                                                className="text-destructive hover:text-destructive"
                                             >
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
@@ -133,7 +143,7 @@ function Dashboard() {
                                     </div>
                                 ))}
                                 {articles.length === 0 && (
-                                    <p className="text-center text-gray-500 py-8">
+                                    <p className="text-center text-muted-foreground py-8">
                                         No articles yet. Create your first article!
                                     </p>
                                 )}
@@ -143,8 +153,8 @@ function Dashboard() {
                 </div>
 
                 <Card>
-                    <CardHeader>
-                        <CardTitle>Quick Actions</CardTitle>
+                    <CardHeader>                            <CardTitle>Go to</CardTitle>
+
                     </CardHeader>
                     <CardContent className="space-y-3">
                         <Button 
@@ -153,7 +163,7 @@ function Dashboard() {
                             onClick={() => navigate('/articles/new')}
                         >
                             <FileText className="mr-2 h-4 w-4" />
-                            Create New Article
+                            Write an article
                         </Button>
                         <Button 
                             className="w-full justify-start" 
@@ -161,7 +171,7 @@ function Dashboard() {
                             onClick={() => navigate('/gallery')}
                         >
                             <Upload className="mr-2 h-4 w-4" />
-                            Manage Gallery
+                            Arrange photo stories
                         </Button>
                         <Button 
                             className="w-full justify-start" 
@@ -174,6 +184,8 @@ function Dashboard() {
                     </CardContent>
                 </Card>
             </div>
+            </>
+            )}
         </div>
     );
 }

@@ -14,7 +14,7 @@ const FLAG_META = {
   },
   instants_home_section: {
     label: "Instants homepage section",
-    description: "The 'live instants' bento/snap-scroll section on the public homepage.",
+    description: "Legacy rollout flag. The homepage Instants panel has been removed; this switch no longer displays it.",
   },
   instants_reactions: {
     label: "Instant reactions + notes",
@@ -80,9 +80,9 @@ export default function Flags() {
   };
 
   if (error && !flags) {
-    return <p className="p-6 text-sm text-red-600">Failed to load flags: {error}</p>;
+    return <p role="alert" className="p-6 text-sm text-destructive">Failed to load flags: {error}</p>;
   }
-  if (!flags) return <p className="p-6 text-sm text-muted-foreground">Loading…</p>;
+  if (!flags) return <div aria-label="Loading feature flags" className="space-y-4 animate-pulse"><div className="h-10 w-48 rounded bg-muted" />{[1, 2, 3].map((item) => <div key={item} className="h-28 rounded-xl bg-muted" />)}</div>;
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -94,7 +94,7 @@ export default function Flags() {
       </div>
 
       {error && flags && (
-        <p className="text-sm text-red-600 border border-red-200 rounded px-3 py-2">
+        <p role="alert" className="text-sm text-destructive border border-destructive/30 rounded px-3 py-2">
           Save failed, change rolled back: {error}
         </p>
       )}
@@ -114,7 +114,7 @@ export default function Flags() {
                     key={s}
                     onClick={() => flip(flag.key, s)}
                     disabled={saving === flag.key || flag.state === s}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                    className={`min-h-11 px-3 text-sm font-medium rounded-md border transition-colors ${
                       flag.state === s ? STATE_STYLES[s] : "bg-transparent text-muted-foreground border-border hover:bg-accent"
                     }`}
                   >

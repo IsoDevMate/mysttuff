@@ -1,17 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 
 /**
- * Netflix-style "story mode" hero for the Gallery.
- * - h-screen, stacked slides, direction-aware 0.75s transitions
- * - wheel hijack gated by an IntersectionObserver (only when ≥90% visible),
- *   700ms cooldown, and edge release so users are never trapped
- * - 5s autoplay with a linear progress bar riding the active thumbnail
- * - touch swipes on mobile
+ * A manually browsed story cover for the Gallery. Visitors choose a frame and
+ * move through it at their own pace; normal page scrolling stays untouched.
  */
 const EASE = [0.22, 1, 0.36, 1];
-const AUTOPLAY_MS = 5000;
 
 const slideVariants = {
   enter: (dir) => ({ opacity: 0, scale: 1.04, x: dir * 40 }),
@@ -22,11 +17,7 @@ const slideVariants = {
 export default function GalleryHero({ slides, onOpenItem, onExplore }) {
   const [active, setActive] = useState(0);
   const [direction, setDirection] = useState(1);
-  const sectionRef = useRef(null);
-  const fullyVisibleRef = useRef(false);
-  const coolingRef = useRef(false);
-  const touchStartRef = useRef(null);
-
+  const [reducedMotion, setReducedMotion] = useState(false);
   const goTo = useCallback(
     (index, dir) => {
       const count = slides.length;
@@ -41,75 +32,22 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
   const next = useCallback(() => goTo(active + 1, 1), [active, goTo]);
   const prev = useCallback(() => goTo(active - 1, -1), [active, goTo]);
 
-  // The hero renders null while the gallery query loads — effects below must
-  // re-run once the section actually mounts (hasSlides flips false → true).
-  const hasSlides = slides.length > 0;
-
-  // Autoplay — resets on every slide change so each slide gets a full interval
   useEffect(() => {
-    if (!hasSlides || slides.length <= 1) return;
-    const t = setTimeout(() => next(), AUTOPLAY_MS);
-    return () => clearTimeout(t);
-  }, [active, next, slides.length, hasSlides]);
-
-  // Only hijack the wheel while the hero fills the screen
-  useEffect(() => {
-    const section = sectionRef.current;
-    if (!section || !hasSlides) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => {
-        fullyVisibleRef.current = entry.intersectionRatio >= 0.9;
-      },
-      { threshold: [0, 0.9, 1] }
-    );
-    obs.observe(section);
-    return () => obs.disconnect();
-  }, [hasSlides]);
-
-  // Wheel hijack with cooldown + edge release
-  useEffect(() => {
-    const section = sectionRef.current;
-    if (!section || slides.length <= 1) return;
-
-    const onWheel = (e) => {
-      if (!fullyVisibleRef.current) return;
-      const down = e.deltaY > 0;
-      // Never trap the user: release the page at the edges
-      if ((down && active === slides.length - 1) || (!down && active === 0)) return;
-      e.preventDefault();
-      if (coolingRef.current) return;
-      coolingRef.current = true;
-      setTimeout(() => (coolingRef.current = false), 700);
-      down ? next() : prev();
-    };
-
-    section.addEventListener("wheel", onWheel, { passive: false });
-    return () => section.removeEventListener("wheel", onWheel);
-  }, [active, next, prev, slides.length, hasSlides]);
-
-  // Touch swipes (mobile)
-  const onTouchStart = (e) => {
-    touchStartRef.current = e.touches[0].clientY;
-  };
-  const onTouchEnd = (e) => {
-    if (touchStartRef.current === null || slides.length <= 1) return;
-    const delta = touchStartRef.current - e.changedTouches[0].clientY;
-    touchStartRef.current = null;
-    if (Math.abs(delta) < 40) return;
-    if (delta > 0 && active < slides.length - 1) next();
-    else if (delta < 0 && active > 0) prev();
-  };
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReducedMotion(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
 
   if (!slides.length) return null;
   const slide = slides[active];
 
   return (
     <section
-      ref={sectionRef}
-      className="relative h-screen w-full overflow-hidden -mt-20"
+      aria-label="Featured gallery stories"
+      className="relative min-h-[min(780px,calc(100svh-5rem))] h-[min(780px,calc(100svh-5rem))] w-full overflow-hidden -mt-20"
       style={{ backgroundColor: "#0c0a09" }}
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
     >
       <style>{`
         @media (prefers-reduced-motion: reduce) {
@@ -125,9 +63,9 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
           custom={direction}
           variants={slideVariants}
           initial="enter"
-          animate="center"
-          exit="exit"
-          transition={{ duration: 0.75, ease: EASE }}
+          animate="center"          exit="exit"
+          transition={{ duration: reducedMotion ? 0 : 0.35, ease: EASE }}
+
           className="absolute inset-0"
         >
           <img
@@ -158,9 +96,9 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
             initial={{ opacity: 0, y: 28 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -14 }}
-            transition={{ duration: 0.55, ease: EASE }}
+            transition={{ duration: reducedMotion ? 0 : 0.35, ease: EASE }}
           >
-            <p className="font-mono text-[10px] uppercase tracking-[0.3em] mb-4" style={{ color: "#f0ebe3", opacity: 0.55 }}>
+            <p className="font-mono text-xs uppercase tracking-[0.2em] mb-4" style={{ color: "#f0ebe3", opacity: 0.55 }}>
               gallery · {slide.overline}
             </p>
             <h1
@@ -175,7 +113,7 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={onExplore}
-                className="font-body text-sm px-6 py-2.5 rounded-lg transition-opacity hover:opacity-80"
+                className="font-body text-sm min-h-11 px-6 rounded-lg transition-opacity hover:opacity-80"
                 style={{ backgroundColor: "#f0ebe3", color: "#0c0a09" }}
               >
                 Explore the gallery
@@ -183,7 +121,7 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
               {slide.item && (
                 <button
                   onClick={() => onOpenItem?.(slide.item, slide.mediaIndex)}
-                  className="font-body text-sm px-6 py-2.5 rounded-lg border flex items-center justify-center gap-2 transition-colors hover:bg-white/10"
+                  className="font-body text-sm min-h-11 px-6 rounded-lg border flex items-center justify-center gap-2 transition-colors hover:bg-white/10"
                   style={{ borderColor: "#f0ebe3" + "55", color: "#f0ebe3" }}
                 >
                   <Play className="w-3.5 h-3.5" /> View
@@ -195,7 +133,7 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
       </div>
 
       {/* Top-right counter */}
-      <div className="absolute top-24 right-6 sm:right-10 z-10 font-mono text-[10px] tracking-[0.25em]" style={{ color: "#f0ebe3", opacity: 0.5 }}>
+      <div className="absolute top-24 right-6 sm:right-10 z-10 font-mono text-xs tracking-[0.2em]" style={{ color: "#f0ebe3", opacity: 0.5 }}>
         {String(active + 1).padStart(2, "0")} / {String(slides.length).padStart(2, "0")}
       </div>
 
@@ -210,7 +148,7 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
             transition={{ delay: 1.5, duration: 0.6 }}
             className="absolute bottom-28 right-6 sm:right-10 z-10 flex flex-col items-center gap-2"
           >
-            <span className="font-mono text-[10px] tracking-[0.25em]" style={{ color: "#f0ebe3", opacity: 0.5 }}>
+            <span className="font-mono text-xs tracking-[0.2em]" style={{ color: "#f0ebe3", opacity: 0.5 }}>
               SCROLL
             </span>
             <motion.div
@@ -223,7 +161,7 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
         )}
       </AnimatePresence>
 
-      {/* Thumbnail row with autoplay progress */}
+      {/* Frame picker */}
       <div className="absolute bottom-0 left-0 right-0 z-10 px-6 sm:px-10 lg:px-16 pb-6">
         <div className="flex gap-2 sm:gap-3 items-end overflow-x-auto">
           {slides.map((s, i) => (
@@ -232,7 +170,7 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
               onClick={() => goTo(i)}
               aria-label={`Slide ${i + 1}: ${s.title}`}
               aria-current={i === active}
-              className={`relative shrink-0 rounded overflow-hidden group transition-all duration-300 ${
+              className={`relative shrink-0 rounded overflow-hidden group transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
                 i === active
                   ? "h-16 w-24 sm:h-20 sm:w-32 opacity-100"
                   : "h-12 w-16 sm:h-16 sm:w-24 opacity-50 hover:opacity-80"
@@ -245,22 +183,33 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
                 draggable={false}
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
               />
-              {i === active && slides.length > 1 && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: "#f0ebe3" + "40" }}>
-                  <motion.div
-                    key={active}
-                    initial={{ width: "0%" }}
-                    animate={{ width: "100%" }}
-                    transition={{ duration: AUTOPLAY_MS / 1000, ease: "linear" }}
-                    className="h-full"
-                    style={{ backgroundColor: "var(--accent-color, #a8a29e)" }}
-                  />
-                </div>
-              )}
             </button>
           ))}
         </div>
       </div>
+
+      {slides.length > 1 && (
+        <div className="absolute bottom-24 right-6 sm:right-10 z-20 flex gap-2">
+          <button
+            type="button"
+            onClick={prev}
+            aria-label="Previous gallery story"
+            className="h-11 w-11 rounded-full border flex items-center justify-center text-white transition-colors hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+            style={{ borderColor: "rgba(240,235,227,0.4)", backgroundColor: "rgba(12,10,9,0.4)" }}
+          >
+            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={next}
+            aria-label="Next gallery story"
+            className="h-11 w-11 rounded-full border flex items-center justify-center text-white transition-colors hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+            style={{ borderColor: "rgba(240,235,227,0.4)", backgroundColor: "rgba(12,10,9,0.4)" }}
+          >
+            <ChevronRight className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+      )}
     </section>
   );
 }

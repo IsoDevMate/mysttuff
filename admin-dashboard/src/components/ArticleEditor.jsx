@@ -69,16 +69,17 @@ function TagChip({ tag, onRemove, onSetUrl }) {
     return (
         <span className="text-xs bg-muted px-2 py-0.5 rounded-full flex items-center gap-1">
             {tag.name}
-            {tag.url && <Link2 className="h-3 w-3 text-blue-500" />}
+            {tag.url && <Link2 className="h-3 w-3 text-muted-foreground" />}
             <button
                 type="button"
                 title={tag.url ? `Custom link: ${tag.url}\nClick to edit` : 'Add custom link'}
                 onClick={() => { setUrlDraft(tag.url || ''); setEditing(true); }}
-                className="hover:text-blue-500"
+                aria-label={`Edit link for tag ${tag.name}`}
+                className="flex h-11 w-11 items-center justify-center rounded-md hover:bg-accent hover:text-foreground"
             >
                 {tag.url ? <Link2 className="h-3 w-3" /> : <Plus className="h-3 w-3 opacity-40" />}
             </button>
-            <button type="button" onClick={onRemove} className="hover:text-red-500">
+            <button type="button" onClick={onRemove} aria-label={`Remove tag ${tag.name}`} className="flex h-11 w-11 items-center justify-center rounded-md hover:bg-destructive/10 hover:text-destructive">
                 <X className="h-3 w-3" />
             </button>
             {editing && (
@@ -94,7 +95,8 @@ function TagChip({ tag, onRemove, onSetUrl }) {
                         }}
                         onBlur={commit}
                         placeholder="https://custom-link.com"
-                        className="w-48 px-1.5 py-0.5 border rounded text-xs bg-background"
+                        aria-label={`URL for tag ${tag.name}`}
+                        className="w-48 min-h-11 px-3 border rounded-md text-sm bg-background"
                     />
                 </span>
             )}
@@ -553,7 +555,7 @@ const ArticleEditor = () => {
     };
 
     if (loading && id !== 'new') {
-        return <div className="p-6">Loading...</div>;
+        return <div aria-label="Loading article" className="max-w-6xl mx-auto space-y-4 animate-pulse"><div className="h-11 w-56 rounded bg-muted" /><div className="h-80 rounded-xl bg-muted" /></div>;
     }
 
     const isSplit = viewMode === 'split';
@@ -563,14 +565,14 @@ const ArticleEditor = () => {
     return (
         <div className="max-w-6xl mx-auto space-y-4">
             {/* Top bar */}
-            <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center space-x-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                     <Button variant="outline" onClick={() => navigate('/articles')}>
                         <ArrowLeft className="mr-2 h-4 w-4" />
                         Back
                     </Button>
-                    <h1 className="text-xl font-bold">
-                        {id === 'new' ? 'New Article' : 'Edit Article'}
+                    <h1 className="font-display text-xl font-semibold">
+                        {!id || id === 'new' ? 'New article' : 'Edit article'}
                     </h1>
                 </div>
 
@@ -578,32 +580,39 @@ const ArticleEditor = () => {
                 <button
                     onClick={() => setShowShortcuts(true)}
                     title="Keyboard shortcuts (Ctrl/⌘ + /)"
-                    className="p-2 rounded-lg border hover:bg-muted transition-colors"
+                    aria-label="Keyboard shortcuts"
+                    className="flex h-11 w-11 items-center justify-center rounded-lg border hover:bg-muted transition-colors"
                 >
                     <Keyboard className="h-4 w-4" />
                 </button>
 
                 {/* View mode toggle */}
-                <div className="flex items-center border rounded-lg overflow-hidden">
+                <div role="group" aria-label="Article view mode" className="flex items-center border rounded-lg overflow-hidden">
                     <button
+                        type="button"
+                        aria-pressed={isEdit}
                         onClick={() => setViewMode('edit')}
-                        className={`px-3 py-1.5 text-sm flex items-center gap-1.5 transition-colors ${
+                        className={`min-h-11 px-3 text-sm flex items-center gap-1.5 transition-colors ${
                             isEdit ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
                         }`}
                     >
                         <EyeOff className="h-3.5 w-3.5" /> Edit
                     </button>
                     <button
+                        type="button"
+                        aria-pressed={isSplit}
                         onClick={() => setViewMode('split')}
-                        className={`px-3 py-1.5 text-sm flex items-center gap-1.5 border-x transition-colors ${
+                        className={`min-h-11 px-3 text-sm flex items-center gap-1.5 border-x transition-colors ${
                             isSplit ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
                         }`}
                     >
                         <Columns className="h-3.5 w-3.5" /> Split
                     </button>
                     <button
+                        type="button"
+                        aria-pressed={isPreview}
                         onClick={() => setViewMode('preview')}
-                        className={`px-3 py-1.5 text-sm flex items-center gap-1.5 transition-colors ${
+                        className={`min-h-11 px-3 text-sm flex items-center gap-1.5 transition-colors ${
                             isPreview ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
                         }`}
                     >
@@ -612,7 +621,7 @@ const ArticleEditor = () => {
                 </div>
 
                 {/* Save/Publish actions */}
-                <div className="flex items-center space-x-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     {/* Autosave status indicator */}
                     <span
                         className="text-xs text-muted-foreground flex items-center gap-1.5"
@@ -651,7 +660,6 @@ const ArticleEditor = () => {
                     <Button
                         onClick={() => handleSave(true)}
                         disabled={loading}
-                        className="bg-green-600 hover:bg-green-700 text-white"
                     >
                         <Eye className="mr-2 h-4 w-4" />
                         Publish
@@ -661,7 +669,7 @@ const ArticleEditor = () => {
 
             {/* Crash-recovery banner */}
             {recoverableDraft && (
-                <div className="flex items-center justify-between gap-3 border border-yellow-300 bg-yellow-50 text-yellow-900 rounded-lg px-4 py-2.5 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3 border border-amber-300 bg-amber-50 text-amber-950 rounded-lg px-4 py-3 text-sm">
                     <span>
                         We found unsaved work from a previous session
                         {recoverableDraft.snapshot.savedAt &&
@@ -910,7 +918,7 @@ const ArticleEditor = () => {
                                             value={article.category}
                                             onChange={(e) => setArticle(prev => ({ ...prev, category: e.target.value }))}
                                             placeholder="Category"
-                                            className="h-8 text-sm"
+                                            className="min-h-11 text-base sm:text-sm"
                                         />
                                     </div>
                                     <div>
@@ -919,7 +927,7 @@ const ArticleEditor = () => {
                                             value={article.image_url}
                                             onChange={(e) => setArticle(prev => ({ ...prev, image_url: e.target.value }))}
                                             placeholder="https://..."
-                                            className="h-8 text-sm"
+                                            className="min-h-11 text-base sm:text-sm"
                                         />
                                     </div>
                                     <div className="flex items-end gap-4">

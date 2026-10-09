@@ -252,12 +252,12 @@ const MediaUpload = forwardRef(function MediaUpload(
               ) : (
                 <img src={image.url} alt={image.name} className="w-full h-28 object-cover" />
               )}
-              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
+              <div className="absolute inset-0 bg-black/75 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
                 {onInsert && (
                   <button
                     type="button"
                     onClick={() => insertAtCursorPosition(image.url, image.name)}
-                    className="w-full text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                    className="w-full min-h-11 text-sm bg-primary text-primary-foreground px-3 py-2 rounded-md hover:bg-primary/90"
                   >
                     Insert at cursor
                   </button>
@@ -269,7 +269,7 @@ const MediaUpload = forwardRef(function MediaUpload(
                       onSetFeatured(image.url);
                       toast.success('Set as featured hero image');
                     }}
-                    className="w-full text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
+                    className="w-full min-h-11 text-sm bg-secondary text-secondary-foreground px-3 py-2 rounded-md hover:bg-secondary/80"
                   >
                     Set as featured
                   </button>
@@ -278,7 +278,7 @@ const MediaUpload = forwardRef(function MediaUpload(
                   <button
                     type="button"
                     onClick={() => setEditingUrl(image.url)}
-                    className="w-full text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700 flex items-center justify-center gap-1"
+                    className="w-full min-h-11 text-sm bg-secondary text-secondary-foreground px-3 py-2 rounded-md hover:bg-secondary/80 flex items-center justify-center gap-2"
                   >
                     <Pencil className="h-3 w-3" /> Edit / re-crop
                   </button>
@@ -286,7 +286,7 @@ const MediaUpload = forwardRef(function MediaUpload(
                 <button
                   type="button"
                   onClick={() => copyMarkdown(image.url)}
-                  className="w-full text-xs bg-white/20 text-white px-2 py-1 rounded hover:bg-white/30 flex items-center justify-center gap-1"
+                  className="w-full min-h-11 text-sm bg-card text-card-foreground px-3 py-2 rounded-md hover:bg-accent flex items-center justify-center gap-2"
                 >
                   {copied === image.url ? (
                     <><CheckCircle className="h-3 w-3" /> Copied!</>
@@ -297,7 +297,8 @@ const MediaUpload = forwardRef(function MediaUpload(
                 <button
                   type="button"
                   onClick={() => removeImage(index)}
-                  className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-0.5 hover:bg-red-700"
+                  aria-label={`Remove ${image.name}`}
+                  className="absolute top-1 right-1 h-11 w-11 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center hover:bg-destructive/90"
                 >
                   <X className="h-3 w-3" />
                 </button>

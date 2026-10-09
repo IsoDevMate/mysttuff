@@ -98,32 +98,39 @@ const Instants = () => {
     }
   };
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (loading) return <div aria-label="Loading instants" className="space-y-4 animate-pulse p-2"><div className="h-10 w-48 rounded bg-muted" />{[1, 2, 3].map((item) => <div key={item} className="h-24 rounded-xl bg-muted" />)}</div>;
 
   const pendingCount = waitlist.filter((w) => w.status === 'pending').length;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Zap className="h-7 w-7 text-yellow-500" /> Instants
-        </h1>
-        <div className="flex border rounded-lg overflow-hidden">
+        <div>
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Camera moments</p>
+          <h1 className="font-display text-3xl font-semibold">Instants</h1>
+        </div>
+        <div role="tablist" aria-label="Instant management" className="flex flex-wrap gap-1 rounded-lg border border-border p-1">
           <button
+            role="tab"
+            aria-selected={tab === 'instants'}
             onClick={() => setTab('instants')}
-            className={`px-4 py-1.5 text-sm flex items-center gap-1.5 ${tab === 'instants' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            className={`min-h-11 rounded-md px-3 text-sm flex items-center gap-1.5 ${tab === 'instants' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
           >
             <Zap className="h-3.5 w-3.5" /> Instants ({instants.length})
           </button>
           <button
+            role="tab"
+            aria-selected={tab === 'notes'}
             onClick={() => setTab('notes')}
-            className={`px-4 py-1.5 text-sm flex items-center gap-1.5 border-r border-l ${tab === 'notes' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            className={`min-h-11 rounded-md px-3 text-sm flex items-center gap-1.5 ${tab === 'notes' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
           >
             <MessageCircle className="h-3.5 w-3.5" /> Notes ({notes.length})
           </button>
           <button
+            role="tab"
+            aria-selected={tab === 'waitlist'}
             onClick={() => setTab('waitlist')}
-            className={`px-4 py-1.5 text-sm flex items-center gap-1.5 ${tab === 'waitlist' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            className={`min-h-11 rounded-md px-3 text-sm flex items-center gap-1.5 ${tab === 'waitlist' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
           >
             <Users className="h-3.5 w-3.5" /> Waitlist
             {pendingCount > 0 && (
@@ -134,9 +141,7 @@ const Instants = () => {
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Words, concepts, links you stumble on during the day — capture them here and they show up
-        on your site <strong>instantly</strong>. Readers can think along; new ones join a waitlist
-        before they can post thoughts. Seeds for future deep dives.
+        Camera moments appear on your site as soon as you capture them. Set how long each one stays live, then review reactions here.
       </p>
 
       {tab === 'instants' ? (
@@ -153,10 +158,11 @@ const Instants = () => {
                     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') capture();
                   }}
                   placeholder="A word, a concept, a link, a spark… (Ctrl+Enter to fire)"
-                  className="w-full p-3 border rounded-lg h-20 resize-none bg-background text-sm"
+                  className="w-full min-h-20 p-3 border border-input rounded-lg resize-none bg-background text-base"
                 />
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
+
                 <Input
                   value={linkUrl}
                   onChange={(e) => setLinkUrl(e.target.value)}
@@ -167,7 +173,7 @@ const Instants = () => {
                   value={duration}
                   onChange={(e) => setDuration(e.target.value)}
                   title="How long this instant stays live"
-                  className="h-9 border rounded-md bg-background text-sm px-2"
+                  className="min-h-11 border border-input rounded-md bg-background text-sm px-3"
                 >
                   <option value="4h">4 hours</option>
                   <option value="24h">24 hours</option>
@@ -209,7 +215,7 @@ const Instants = () => {
                         <img src={instant.image_url} alt="" className="mt-2 max-h-40 rounded-lg border" />
                       )}
                       {instant.link_url && (
-                        <a href={instant.link_url} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline break-all mt-1 block">
+                        <a href={instant.link_url} target="_blank" rel="noreferrer" className="min-h-11 text-sm text-muted-foreground hover:text-foreground hover:underline break-all mt-1 inline-flex items-center">
                           {instant.link_url}
                         </a>
                       )}
@@ -233,8 +239,9 @@ const Instants = () => {
                     </div>
                     <Button
                       variant="ghost"
-                      size="sm"
-                      className="h-7 px-1.5 text-red-500 hover:text-red-600 shrink-0"
+                      size="icon"
+                      className="text-destructive hover:text-destructive shrink-0"
+                      aria-label={`Delete instant ${instant.text || 'photo moment'}`}
                       onClick={() => removeInstant(instant.id)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -246,10 +253,11 @@ const Instants = () => {
           </div>
         </>
       ) : tab === 'notes' ? (
-        <div className="space-y-2">
+        <div role="tabpanel" className="space-y-2">
           {notes.length === 0 ? (
+
             <p className="text-center text-muted-foreground py-10">
-              No notes yet — visitors post them without any signup, so this is your moderation queue.
+              No notes to moderate yet. New visitor notes will appear here.
             </p>
           ) : (
             notes.map((n) => (
@@ -264,8 +272,9 @@ const Instants = () => {
                   </div>
                   <Button
                     variant="ghost"
-                    size="sm"
-                    className="h-7 px-1.5 text-red-500 hover:text-red-600 shrink-0"
+                    size="icon"
+                    className="text-destructive hover:text-destructive shrink-0"
+                    aria-label={`Delete note from ${n.author_name || 'visitor'}`}
                     onClick={async () => {
                       try {
                         await api.deleteNote(n.instant_id, n.id);
@@ -284,10 +293,10 @@ const Instants = () => {
           )}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div role="tabpanel" className="space-y-2">
           {waitlist.length === 0 ? (
             <p className="text-center text-muted-foreground py-10">
-              Nobody on the waitlist yet — people join when they try to post a thought.
+              No one on the waitlist yet. New requests will appear here.
             </p>
           ) : (
             waitlist.map((w) => (

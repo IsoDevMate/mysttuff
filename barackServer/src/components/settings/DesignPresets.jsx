@@ -134,7 +134,7 @@ export default function DesignPresets() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="gap-2">
+        <Button variant="ghost" size="sm" className="gap-2" aria-label="Open design presets">
           <Sparkles className="w-4 h-4" />
           <span className="hidden sm:inline">Designs</span>
         </Button>
@@ -143,7 +143,7 @@ export default function DesignPresets() {
         <DialogHeader>
           <DialogTitle className="font-serif-display text-2xl">Design Presets</DialogTitle>
           <DialogDescription className="font-body">
-            Try different looks - your choice is saved automatically
+            Preview different looks. Your choice is saved on this device.
           </DialogDescription>
         </DialogHeader>
         
@@ -152,7 +152,7 @@ export default function DesignPresets() {
             <button
               key={preset.id}
               onClick={() => applyPreset(preset)}
-              className="text-left p-4 border-2 rounded-lg hover:border-current/40 transition-all relative group"
+              className="min-h-11 text-left p-4 border-2 rounded-lg hover:border-current/40 transition-colors relative group"
               style={{
                 borderColor: currentPreset === preset.id ? 'var(--accent-color)' : 'var(--text-color, #000)' + '10'
               }}

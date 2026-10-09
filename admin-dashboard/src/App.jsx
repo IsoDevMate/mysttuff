@@ -47,13 +47,16 @@ function Layout() {
       )}
 
       <div className="lg:ml-64">
-        <header className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
-          <div className="flex items-center justify-between px-6 py-4">
+        <header className="sticky top-0 z-20 bg-background/95 border-b border-border/80">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden"
+              aria-label="Open navigation"
+              aria-expanded={sidebarOpen}
+              aria-controls="mobile-studio-navigation"
             >
               <Menu className="h-5 w-5" />
             </Button>
@@ -74,7 +77,7 @@ function Layout() {
           </div>
         </header>
 
-        <main className="p-6">
+        <main className="admin-page-enter p-4 sm:p-6">
           <AnimatePresence mode="wait">
             <Outlet />
           </AnimatePresence>

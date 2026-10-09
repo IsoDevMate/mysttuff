@@ -73,7 +73,7 @@ export default function ImageCropModal({ file, queuePosition = 1, onConfirm, onS
               </span>
             )}
           </h3>
-          <button type="button" onClick={onCancel} className="p-1 rounded hover:bg-muted">
+          <button type="button" onClick={onCancel} aria-label="Close crop dialog" className="flex h-11 w-11 items-center justify-center rounded-md hover:bg-muted">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -98,7 +98,7 @@ export default function ImageCropModal({ file, queuePosition = 1, onConfirm, onS
                 key={a.label}
                 type="button"
                 onClick={() => setAspect(a.value)}
-                className={`text-xs px-2 py-1 rounded border transition-colors ${
+                className={`min-h-11 min-w-11 px-3 text-sm rounded-md border transition-colors ${
                   aspect === a.value
                     ? 'bg-primary text-primary-foreground border-primary'
                     : 'hover:bg-muted'

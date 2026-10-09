@@ -46,7 +46,7 @@ function ToolbarButton({ icon: Icon, title, onClick, active, disabled }) {
       onClick={onClick}
       title={title}
       disabled={disabled}
-      className={`p-1.5 rounded hover:bg-muted transition-colors disabled:opacity-30 disabled:hover:bg-transparent ${
+      className={`flex h-11 w-11 items-center justify-center rounded-md hover:bg-muted transition-colors disabled:opacity-30 disabled:hover:bg-transparent ${
         active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
       }`}
     >
@@ -116,7 +116,7 @@ export default function MarkdownToolbar({ textareaRef, onContentChange, onImageC
     <div className="border rounded-t-lg bg-muted/30 p-2 space-y-2">
       {TOOL_GROUPS.map((group) => (
         <div key={group.label} className="flex items-center gap-0.5 flex-wrap">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 w-14 shrink-0">
+          <span className="text-xs uppercase tracking-wider text-muted-foreground/70 w-14 shrink-0">
             {group.label}
           </span>
           {group.tools.map((tool) => (
@@ -150,7 +150,7 @@ export default function MarkdownToolbar({ textareaRef, onContentChange, onImageC
         <select
           value={codeLang}
           onChange={(e) => setCodeLang(e.target.value)}
-          className="text-xs border rounded px-2 py-1 bg-background h-7"
+          className="min-h-11 text-sm border border-input rounded-md px-3 bg-background"
         >
           <option value="javascript">JavaScript</option>
           <option value="typescript">TypeScript</option>

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Edit, Trash2, Eye, Calendar, Tag } from 'lucide-react';
+import { Button } from './ui/button';
+import { Card } from './ui/card';
 import { api } from '../api';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -62,30 +64,32 @@ export default function ArticleList({ onEdit, onNew }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading articles...</div>
+      <div aria-label="Loading articles" className="max-w-6xl mx-auto space-y-4 animate-pulse p-2">
+        <div className="h-10 w-48 rounded bg-muted" />
+        {[1, 2, 3].map((item) => <div key={item} className="h-24 rounded-xl bg-muted" />)}
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">Articles</h1>
-        <button
-          onClick={handleNew}
-          className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-        >
-          <Plus className="h-5 w-5 mr-2" />
-          New Article
-        </button>
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Your writing</p>
+          <h1 className="font-display text-3xl font-semibold">Articles</h1>
+        </div>
+        <Button onClick={handleNew}>
+          <Plus className="h-4 w-4 mr-2" /> New article
+        </Button>
       </div>
 
-      <div className="flex items-center space-x-4 mb-6">
+      <div className="flex items-center gap-3">
+        <label htmlFor="article-filter" className="text-sm text-muted-foreground">Show</label>
         <select
+          id="article-filter"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="min-h-11 max-w-full border border-input bg-card text-foreground rounded-md px-3 focus:outline-none focus:ring-2 focus:ring-ring"
         >
           <option value="all">All Articles ({articles.length})</option>
           <option value="published">Published ({articles.filter(a => a.published).length})</option>
@@ -93,26 +97,26 @@ export default function ArticleList({ onEdit, onNew }) {
         </select>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-md">
-        <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+      <Card className="overflow-hidden">
+        <ul className="divide-y divide-border">
           {filteredArticles.map((article) => (
             <li key={article.id}>
-              <div className="px-4 py-4 flex items-center justify-between">
+              <div className="px-4 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center space-x-3">
-                    <h3 className="text-lg font-medium truncate">
+                    <h3 className="min-w-0 flex-1 text-lg font-medium break-words">
                       {article.title}
                     </h3>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    <span className={`shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       article.published
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-yellow-100 text-yellow-800'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                        : 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200'
                     }`}>
                       {article.published ? 'Published' : 'Draft'}
                     </span>
                   </div>
 
-                  <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                     <div className="flex items-center">
                       <Calendar className="h-4 w-4 mr-1" />
                       {format(new Date(article.created_at), 'MMM d, yyyy')}
@@ -126,19 +130,20 @@ export default function ArticleList({ onEdit, onNew }) {
                   </div>
 
                   {article.excerpt && (
-                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+                    <p className="mt-2 text-sm text-muted-foreground line-clamp-2">
                       {article.excerpt}
                     </p>
                   )}
                 </div>
 
-                <div className="flex items-center space-x-2 ml-4">
+                <div className="flex items-center gap-1 sm:ml-4">
                   {article.published && (
                     <a
                       href={`https://mysttuff-72jz.vercel.app/blog?slug=${article.slug}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="p-2 text-gray-400 hover:text-blue-500"
+                      className="min-h-11 min-w-11 flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                      aria-label={`View ${article.title}`}
                       title="View article"
                     >
                       <Eye className="h-5 w-5" />
@@ -146,14 +151,16 @@ export default function ArticleList({ onEdit, onNew }) {
                   )}
                   <button
                     onClick={() => handleEdit(article)}
-                    className="p-2 text-gray-400 hover:text-indigo-500"
+                    className="min-h-11 min-w-11 flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                    aria-label={`Edit ${article.title}`}
                     title="Edit article"
                   >
                     <Edit className="h-5 w-5" />
                   </button>
                   <button
                     onClick={() => handleDelete(article.id)}
-                    className="p-2 text-gray-400 hover:text-red-500"
+                    className="min-h-11 min-w-11 flex items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    aria-label={`Delete ${article.title}`}
                     title="Delete article"
                   >
                     <Trash2 className="h-5 w-5" />
@@ -163,17 +170,12 @@ export default function ArticleList({ onEdit, onNew }) {
             </li>
           ))}
         </ul>
-      </div>
+      </Card>
 
       {filteredArticles.length === 0 && (
         <div className="text-center py-12">
-          <div className="text-gray-500 mb-4">No articles found</div>
-          <button
-            onClick={handleNew}
-            className="text-indigo-600 hover:text-indigo-500"
-          >
-            Create your first article
-          </button>
+          <div className="text-muted-foreground mb-4">No articles match this filter.</div>
+          <Button variant="outline" onClick={handleNew}>Write an article</Button>
         </div>
       )}
     </div>

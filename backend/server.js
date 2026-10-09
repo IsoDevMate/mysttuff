@@ -236,7 +236,7 @@ app.get('/api/hot-takes', async (req, res) => {
 app.get('/api/articles/:id/comments', async (req, res) => {
   try {
     const result = await db.execute({
-      sql: 'SELECT * FROM comments WHERE post_id = ? ORDER BY created_at ASC',
+      sql: 'SELECT id, post_id, author_name, content, created_at FROM comments WHERE post_id = ? ORDER BY created_at ASC',
       args: [req.params.id],
     });
     res.json(result.rows);
@@ -256,7 +256,10 @@ app.post('/api/articles/:id/comments', async (req, res) => {
       sql: 'INSERT INTO comments (id, post_id, author_name, author_email, content) VALUES (?, ?, ?, ?, ?)',
       args: [id, req.params.id, author_name.trim(), author_email?.trim() || null, content.trim()],
     });
-    const result = await db.execute({ sql: 'SELECT * FROM comments WHERE id = ?', args: [id] });
+    const result = await db.execute({
+      sql: 'SELECT id, post_id, author_name, content, created_at FROM comments WHERE id = ?',
+      args: [id],
+    });
     res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });

@@ -8,6 +8,7 @@ import Gallery from './Pages/Gallery';
 import Links from './Pages/Links';
 import Recap from './Pages/Recap';
 import AdminDashboard from './Pages/AdminDashboard';
+import LegalPage from './Pages/Legal';
 import { FlagsProvider } from './lib/flags';
 
 // The blog's admin route stays OUTSIDE FlagsProvider on purpose — it manages
@@ -23,6 +24,8 @@ function App() {
         <Route path="/Recap" element={<Layout currentPageName="Recap"><Recap /></Layout>} />
         <Route path="/Gallery" element={<Layout currentPageName="Gallery"><Gallery /></Layout>} />
         <Route path="/Links" element={<Layout currentPageName="Links"><Links /></Layout>} />
+        <Route path="/Terms" element={<Layout currentPageName="Terms"><LegalPage kind="terms" /></Layout>} />
+        <Route path="/Privacy" element={<Layout currentPageName="Privacy"><LegalPage kind="privacy" /></Layout>} />
         <Route path="/admin" element={<AdminDashboard />} />
       </Routes>
     </FlagsProvider>
