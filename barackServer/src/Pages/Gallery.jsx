@@ -8,6 +8,7 @@ import { createPageUrl } from "@/lib/utils";
 import { format } from "date-fns";
 import GalleryHero from "@/components/gallery/GalleryHero";
 import MediaLightbox from "@/components/gallery/MediaLightbox";
+import InstantsFilm from "@/components/instants/InstantsFilm";
 import { getMedia, isVideo } from "@/lib/gallery";
 
 const typeLabels = {
@@ -98,6 +99,9 @@ export default function Gallery() {
       />
 
       <div className="max-w-6xl mx-auto px-6">
+        {/* Live instant film strip — captured sparks appear here in realtime */}
+        <InstantsFilm />
+
         {/* Fallback header when there's no hero imagery */}
         {!heroSlides.length && (
           <header className="pt-24 pb-4">

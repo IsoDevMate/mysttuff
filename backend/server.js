@@ -415,13 +415,16 @@ app.get('/api/instants/stream', (req, res) => {
   });
 });
 
-// Public list (published only, newest first)
+// Public list (published, not expired, newest first)
 app.get('/api/instants', async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 100);
     const result = await db.execute({
-      sql: 'SELECT * FROM instants WHERE published = 1 ORDER BY created_at DESC, rowid DESC LIMIT ?',
-      args: [limit],
+      sql: `SELECT * FROM instants
+            WHERE published = 1
+              AND (expires_at IS NULL OR expires_at > ?)
+            ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+      args: [new Date().toISOString(), limit],
     });
     res.json(result.rows);
   } catch (error) {
@@ -429,27 +432,45 @@ app.get('/api/instants', async (req, res) => {
   }
 });
 
-// Admin list (everything)
-app.get('/api/admin/instants', authenticateToken, async (req, res) => {
+// Recap — every published instant ever (the public archive, grouped client-side by month)
+app.get('/api/instants/recap', async (req, res) => {
   try {
-    const result = await db.execute('SELECT * FROM instants ORDER BY created_at DESC, rowid DESC');
+    const result = await db.execute({
+      sql: 'SELECT * FROM instants WHERE published = 1 ORDER BY created_at DESC, rowid DESC LIMIT 500',
+    });
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Admin create — broadcasts instantly
+// Admin list (everything — including expired, for the private archive)
+app.get('/api/admin/instants', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM instants ORDER BY created_at DESC, rowid DESC');
+    const now = new Date().toISOString();
+    const rows = result.rows.map((r) => ({ ...r, expired: !!(r.expires_at && r.expires_at <= now) }));
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin create — broadcasts instantly.
+// duration: '4h' | '24h' | '7d' | 'never' (default '24h', Instagram-style)
+const DURATIONS = { '4h': 4 * 3600e3, '24h': 24 * 3600e3, '7d': 7 * 86400e3, never: null };
 app.post('/api/admin/instants', authenticateToken, async (req, res) => {
-  const { text, image_url, link_url, source, published } = req.body;
+  const { text, image_url, link_url, source, published, duration } = req.body;
   if (!text?.trim() && !image_url) {
     return res.status(400).json({ error: 'An instant needs text or an image' });
   }
+  const ttl = DURATIONS[duration] !== undefined ? DURATIONS[duration] : DURATIONS['24h'];
+  const expiresAt = ttl ? new Date(Date.now() + ttl).toISOString() : null;
   const id = uuidv4();
   try {
     await db.execute({
-      sql: 'INSERT INTO instants (id, text, image_url, link_url, source, published) VALUES (?, ?, ?, ?, ?, ?)',
-      args: [id, text?.trim() || null, image_url || null, link_url || null, source || null, published === false ? 0 : 1],
+      sql: 'INSERT INTO instants (id, text, image_url, link_url, source, published, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      args: [id, text?.trim() || null, image_url || null, link_url || null, source || null, published === false ? 0 : 1, expiresAt],
     });
     const row = (await db.execute({ sql: 'SELECT * FROM instants WHERE id = ?', args: [id] })).rows[0];
     await auditLog('CREATE', 'instant', id, (text || 'image').slice(0, 50));
@@ -462,14 +483,21 @@ app.post('/api/admin/instants', authenticateToken, async (req, res) => {
 
 // Admin update — broadcast the change
 app.put('/api/admin/instants/:id', authenticateToken, async (req, res) => {
-  const { text, image_url, link_url, source, published } = req.body;
+  const { text, image_url, link_url, source, published, duration } = req.body;
   try {
+    const existing = (await db.execute({ sql: 'SELECT * FROM instants WHERE id = ?', args: [req.params.id] })).rows[0];
+    if (!existing) return res.status(404).json({ error: 'Instant not found' });
+    // Only recompute expiry when a new duration is explicitly sent
+    let expiresAt = existing.expires_at;
+    if (duration !== undefined) {
+      const ttl = DURATIONS[duration] !== undefined ? DURATIONS[duration] : DURATIONS['24h'];
+      expiresAt = ttl ? new Date(Date.now() + ttl).toISOString() : null;
+    }
     await db.execute({
-      sql: 'UPDATE instants SET text = ?, image_url = ?, link_url = ?, source = ?, published = ? WHERE id = ?',
-      args: [text?.trim() || null, image_url || null, link_url || null, source || null, published ? 1 : 0, req.params.id],
+      sql: 'UPDATE instants SET text = ?, image_url = ?, link_url = ?, source = ?, published = ?, expires_at = ? WHERE id = ?',
+      args: [text?.trim() || null, image_url || null, link_url || null, source || null, published ? 1 : 0, expiresAt, req.params.id],
     });
     const row = (await db.execute({ sql: 'SELECT * FROM instants WHERE id = ?', args: [req.params.id] })).rows[0];
-    if (!row) return res.status(404).json({ error: 'Instant not found' });
     await auditLog('UPDATE', 'instant', row.id, (row.text || 'image').slice(0, 50));
     broadcastInstants(row.published ? 'instant:update' : 'instant:remove', row);
     res.json(row);

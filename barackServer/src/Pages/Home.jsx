@@ -5,6 +5,7 @@ import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { format } from "date-fns";
+import InstantsLive from "@/components/instants/InstantsLive";
 
 export default function Home() {
   const { data: allPosts = [] } = useQuery({
@@ -27,6 +28,9 @@ export default function Home() {
           A place where I put things I'm working on. Backend experiments, AI explorations, database deep-dives, and whatever else catches my interest.
         </p>
       </section>
+
+      {/* Live instants */}
+      <InstantsLive />
 
       {/* Divider */}
       <div className="border-t border-stone-300 my-12" />

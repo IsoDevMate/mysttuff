@@ -122,6 +122,28 @@ export default function InstantsWidget() {
     return `${Math.round(hrs / 24)}d ago`;
   };
 
+  // "expires in 3h" countdown — instants are ephemeral, Instagram-style
+  const expiresLabel = (iso) => {
+    const then = new Date(iso.endsWith("Z") ? iso : iso + "Z").getTime();
+    const mins = Math.round((then - Date.now()) / 60000);
+    if (mins <= 0) return null;
+    if (mins < 60) return `${mins}m left`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs}h left`;
+    return `${Math.round(hrs / 24)}d left`;
+  };
+
+  // Drop expired instants from the feed without waiting for the next fetch
+  useEffect(() => {
+    const t = setInterval(() => {
+      setInstants((prev) => {
+        const alive = prev.filter((i) => !i.expires_at || new Date(i.expires_at) > new Date());
+        return alive.length === prev.length ? prev : alive;
+      });
+    }, 30000);
+    return () => clearInterval(t);
+  }, []);
+
   const activeInstant = instants.find((i) => i.id === activeId);
 
   return (
@@ -216,7 +238,14 @@ export default function InstantsWidget() {
                         />
                       )}
                       <div className="flex items-center justify-between mt-2">
-                        <span className="text-[10px] opacity-40">{timeAgo(instant.created_at)}</span>
+                        <span className="text-[10px] opacity-40">
+                          {timeAgo(instant.created_at)}
+                          {instant.expires_at && expiresLabel(instant.expires_at) && (
+                            <span className="ml-1.5" style={{ color: "var(--accent-color, #78716c)" }}>
+                              · {expiresLabel(instant.expires_at)}
+                            </span>
+                          )}
+                        </span>
                         <div className="flex items-center gap-2">
                           {instant.link_url && (
                             <a
@@ -315,7 +344,14 @@ export default function InstantsWidget() {
               className="px-4 py-2 text-[10px] font-body opacity-40 border-t shrink-0"
               style={{ borderColor: "var(--text-color, #292524)" + "12" }}
             >
-              sparks & concepts I meet during the day — some become deep dives
+              sparks & concepts I meet during the day —{" "}
+              <a
+                href={createPageUrl("Recap")}
+                onClick={() => setOpen(false)}
+                className="underline hover:opacity-100"
+              >
+                browse the recap
+              </a>
             </p>
           </motion.div>
         )}

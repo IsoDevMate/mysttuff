@@ -104,6 +104,7 @@ if (process.env.TURSO_AUTH_TOKEN) {
     'ALTER TABLE articles ADD COLUMN tags TEXT',
     'ALTER TABLE articles ADD COLUMN show_toc INTEGER DEFAULT 1',
     'ALTER TABLE gallery ADD COLUMN media TEXT',
+    'ALTER TABLE instants ADD COLUMN expires_at DATETIME',
   ];
   for (const sql of columnMigrations) {
     try {

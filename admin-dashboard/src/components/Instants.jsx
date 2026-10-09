@@ -18,6 +18,7 @@ const Instants = () => {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
+  const [duration, setDuration] = useState('24h');
   const [sending, setSending] = useState(false);
   const [tab, setTab] = useState('instants'); // 'instants' | 'waitlist'
   const fileRef = useRef(null);
@@ -48,11 +49,11 @@ const Instants = () => {
     }
     setSending(true);
     try {
-      const created = await api.createInstant({ text, link_url: linkUrl || null });
+      const created = await api.createInstant({ text, link_url: linkUrl || null, duration });
       setInstants((prev) => [created, ...prev]);
       setText('');
       setLinkUrl('');
-      toast.success('Live on your site — instantly');
+      toast.success(duration === 'never' ? 'Live — pinned until you remove it' : `Live for the next ${duration}`);
     } catch {
       toast.error('Failed to capture instant');
     } finally {
@@ -63,7 +64,7 @@ const Instants = () => {
   const uploadImage = async (file) => {
     try {
       const upload = await api.uploadFile(file);
-      const created = await api.createInstant({ image_url: upload.url, text: text.trim() || null });
+      const created = await api.createInstant({ image_url: upload.url, text: text.trim() || null, duration });
       setInstants((prev) => [created, ...prev]);
       setText('');
       toast.success('Image instant is live');
@@ -150,6 +151,17 @@ const Instants = () => {
                   placeholder="Optional link — e.g. the article you were reading"
                   className="flex-1"
                 />
+                <select
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value)}
+                  title="How long this instant stays live"
+                  className="h-9 border rounded-md bg-background text-sm px-2"
+                >
+                  <option value="4h">4 hours</option>
+                  <option value="24h">24 hours</option>
+                  <option value="7d">7 days</option>
+                  <option value="never">Keep forever</option>
+                </select>
                 <input
                   ref={fileRef}
                   type="file"
@@ -192,6 +204,9 @@ const Instants = () => {
                       <p className="text-[11px] text-muted-foreground mt-1">
                         {new Date(instant.created_at + (instant.created_at.endsWith('Z') ? '' : 'Z')).toLocaleString()}
                         {!instant.published && ' · draft'}
+                        {instant.expired && ' · expired (still in your archive)'}
+                        {!instant.expired && instant.expires_at && ` · expires ${new Date(instant.expires_at).toLocaleString()}`}
+                        {!instant.expires_at && ' · kept forever'}
                       </p>
                     </div>
                     <Button
