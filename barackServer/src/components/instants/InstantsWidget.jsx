@@ -1,52 +1,121 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, X, Send, MessageCircle, Sparkles } from "lucide-react";
-import { blogAPI } from "@/api/blogAPI";
-import { createPageUrl } from "@/lib/utils";
+import { Zap, X, Send, MessageCircle, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
+import { useFlags, flagOn } from "../../lib/flags";
+import { createPageUrl } from "../../lib/utils";
+
+const BASE = (import.meta.env.VITE_API_URL || "http://localhost:3001/api").replace(/\/$/, "");
+
+// Anonymous visitor id — random, per-browser, never an identity.
+function visitorId() {
+  let v = localStorage.getItem("visitorId");
+  if (!v) {
+    v = "v:" + crypto.randomUUID();
+    localStorage.setItem("visitorId", v);
+  }
+  return v;
+}
+
+const REACTIONS = ["❤️", "😂", "🔥", "😮", "🥲", "👏"];
+
+function timeAgo(iso) {
+  const then = new Date(iso.endsWith("Z") ? iso : iso + "Z").getTime();
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
+function expiresLabel(iso) {
+  const then = new Date(iso.endsWith("Z") ? iso : iso + "Z").getTime();
+  const mins = Math.round((then - Date.now()) / 60000);
+  if (mins <= 0) return null;
+  if (mins < 60) return `${mins}m left`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h left`;
+  return `${Math.round(hrs / 24)}d left`;
+}
 
 /**
- * Instants — a Locket-style floating widget.
+ * Instants — IG-instants-style floating widget.
  *
- * - A pulsing zap bubble sits above the bottom-right corner on every page.
- * - Opening it reveals the live feed: new instants arrive in realtime over
- *   SSE (Server-Sent Events) — no refresh, like photos popping onto a Locket.
- * - Every instant is a "thought bubble": readers can add their own thoughts.
- * - Reading is open to everyone; posting a thought requires being on the
- *   waitlist (unknown emails are auto-added as pending, like asking to join).
+ * Feed opens as a dark card (Instagram-instants look): big rounded media,
+ * emoji reaction row that toggles on tap, and free-form notes
+ * (no name, no email — moderation is admin-side). Realtime over SSE.
  */
 export default function InstantsWidget() {
+  const { flags } = useFlags();
+  const reactionsOn = flagOn(flags, "instants_reactions");
+
   const [open, setOpen] = useState(false);
   const [instants, setInstants] = useState([]);
   const [loaded, setLoaded] = useState(false);
-  const [activeId, setActiveId] = useState(null); // instant whose thoughts are open
+  const [viewing, setViewing] = useState(null); // instant open in IG-style viewer
+  const [reactionCounts, setReactionCounts] = useState({}); // instantId -> {emoji: count}
+  const [mine, setMine] = useState({}); // instantId -> Set(emoji)
   const [thoughts, setThoughts] = useState([]);
-  const [thoughtForm, setThoughtForm] = useState({ author_name: "", email: "", body: "" });
-  const [thoughtMsg, setThoughtMsg] = useState(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteMsg, setNoteMsg] = useState(null);
   const [sending, setSending] = useState(false);
   const seenIds = useRef(new Set());
+  const vId = useRef(visitorId());
   const feedRef = useRef(null);
+  const inFlight = useRef(new Set()); // "instantId:emoji" — serialize rapid toggles
+
+  const addThought = (thought) =>
+    setThoughts((prev) => (prev.some((t) => t.id === thought.id) ? prev : [...prev, thought]));
 
   // Initial load
   useEffect(() => {
     let alive = true;
-    blogAPI
-      .getInstants(50)
+    fetch(`${BASE}/instants?limit=50`)
+      .then((r) => (r.ok ? r.json() : []))
       .then((rows) => {
         if (!alive) return;
         rows.forEach((r) => seenIds.current.add(r.id));
         setInstants(rows);
         setLoaded(true);
       })
-      .catch(() => setLoaded(true));
+      .catch(() => alive && setLoaded(true));
     return () => {
       alive = false;
     };
   }, []);
 
-  // Realtime: Server-Sent Events with automatic reconnect (browser-native)
+  // Reactions load — when enabled and feed loaded
   useEffect(() => {
-    const base = (import.meta.env.VITE_API_URL || "http://localhost:3001/api").replace(/\/$/, "");
-    const es = new EventSource(`${base}/instants/stream`);
+    if (!reactionsOn || !loaded || instants.length === 0) return;
+    let alive = true;
+    (async () => {
+      const counts = {};
+      const my = {};
+      await Promise.all(
+        instants.slice(0, 20).map(async (inst) => {
+          try {
+            const r = await fetch(
+              `${BASE}/instants/${inst.id}/reactions?visitor_id=${encodeURIComponent(vId.current)}`
+            );
+            if (!r.ok) return;
+            const data = await r.json();
+            counts[inst.id] = Object.fromEntries((data.counts || []).map((c) => [c.emoji, Number(c.count)]));
+            my[inst.id] = new Set(data.mine || []);
+          } catch { /* offline ok */ }
+        })
+      );
+      if (!alive) return;
+      setReactionCounts((prev) => ({ ...prev, ...counts }));
+      setMine((prev) => ({ ...prev, ...my }));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [reactionsOn, loaded, instants.length]);
+
+  // Realtime: SSE
+  useEffect(() => {
+    const es = new EventSource(`${BASE}/instants/stream`);
 
     const upsert = (row) => {
       if (seenIds.current.has(row.id)) {
@@ -68,69 +137,105 @@ export default function InstantsWidget() {
       const { id } = JSON.parse(e.data);
       seenIds.current.delete(id);
       setInstants((prev) => prev.filter((i) => i.id !== id));
+      setViewing((v) => (v?.id === id ? null : v));
     });
     es.addEventListener("thought:new", (e) => {
       if (!e.data) return;
       const { instantId, thought } = JSON.parse(e.data);
-      if (instantId === activeId) {
-        setThoughts((prev) => [...prev.filter((t) => t.id !== thought.id), thought]);
-      }
+      addThought(thought); // deduped — SSE may arrive before the POST response
+    });
+    es.addEventListener("thought:remove", (e) => {
+      if (!e.data) return;
+      const { thoughtId } = JSON.parse(e.data);
+      setThoughts((prev) => prev.filter((t) => t.id !== thoughtId));
     });
 
     return () => es.close();
-  }, [activeId]);
+  }, []);
 
-  const openThoughts = useCallback(async (instantId) => {
-    setActiveId(instantId);
-    setThoughtMsg(null);
+  const loadThoughts = useCallback(async (instantId) => {
     try {
-      setThoughts(await blogAPI.getThoughts(instantId));
+      const r = await fetch(`${BASE}/instants/${instantId}/thoughts`);
+      setThoughts(r.ok ? await r.json() : []);
     } catch {
       setThoughts([]);
     }
   }, []);
 
-  const submitThought = async (e) => {
-    e.preventDefault();
-    if (!activeId) return;
-    setSending(true);
-    setThoughtMsg(null);
+  const openThoughts = (instant) => {
+    setViewing(instant);
+    setNoteMsg(null);
+    loadThoughts(instant.id);
+  };
+
+  const react = async (instant, emoji) => {
+    // serialize rapid toggles against slow networks: ignore clicks while this
+    // emoji's toggle is still in flight (previous state still authoritative).
+    const key = `${instant.id}:${emoji}`;
+    if (inFlight.current.has(key)) return;
+    inFlight.current.add(key);
+
+    // optimistic toggle
+    const had = mine[instant.id]?.has(emoji);
+    setMine((prev) => {
+      const set = new Set(prev[instant.id] || []);
+      if (had) set.delete(emoji);
+      else set.add(emoji);
+      return { ...prev, [instant.id]: set };
+    });
+    setReactionCounts((prev) => {
+      const cur = { ...(prev[instant.id] || {}) };
+      cur[emoji] = Math.max(0, (cur[emoji] || 0) + (had ? -1 : 1));
+      return { ...prev, [instant.id]: cur };
+    });
     try {
-      const res = await blogAPI.postThought(activeId, thoughtForm);
-      if (res.queued) {
-        setThoughtMsg({ kind: "waitlist", text: res.message });
-        setThoughtForm((f) => ({ ...f, body: "" }));
-      } else {
-        setThoughts((prev) => [...prev, res]);
-        setThoughtForm((f) => ({ ...f, body: "" }));
-        setThoughtMsg({ kind: "ok", text: "Thought added" });
-      }
-    } catch (err) {
-      setThoughtMsg({ kind: "error", text: err.message || "Could not send" });
+      const r = await fetch(`${BASE}/instants/${instant.id}/reactions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji, visitor_id: vId.current }),
+      });
+      if (!r.ok) throw new Error();
+      const data = await r.json();
+      setReactionCounts((prev) => ({
+        ...prev,
+        [instant.id]: Object.fromEntries((data.counts || []).map((c) => [c.emoji, Number(c.count)])),
+      }));
+    } catch {
+      // roll back on failure
+      setMine((prev) => {
+        const set = new Set(prev[instant.id] || []);
+        if (had) set.add(emoji);
+        else set.delete(emoji);
+        return { ...prev, [instant.id]: set };
+      });
     } finally {
-      setSending(false);
+      inFlight.current.delete(key);
     }
   };
 
-  const timeAgo = (iso) => {
-    const then = new Date(iso.endsWith("Z") ? iso : iso + "Z").getTime();
-    const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.round(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.round(hrs / 24)}d ago`;
-  };
-
-  // "expires in 3h" countdown — instants are ephemeral, Instagram-style
-  const expiresLabel = (iso) => {
-    const then = new Date(iso.endsWith("Z") ? iso : iso + "Z").getTime();
-    const mins = Math.round((then - Date.now()) / 60000);
-    if (mins <= 0) return null;
-    if (mins < 60) return `${mins}m left`;
-    const hrs = Math.round(mins / 60);
-    if (hrs < 24) return `${hrs}h left`;
-    return `${Math.round(hrs / 24)}d left`;
+  const submitNote = async (e) => {
+    e.preventDefault();
+    if (!noteDraft.trim() || !viewing) return;
+    setSending(true);
+    try {
+      const r = await fetch(`${BASE}/instants/${viewing.id}/thoughts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: noteDraft, visitor_id: vId.current }),
+      });
+      const res = await r.json();
+      if (!r.ok) {
+        setNoteMsg({ kind: "error", text: res.error || "Could not send" });
+      } else {
+        addThought(res); // deduped against the SSE echo
+        setNoteDraft("");
+        setNoteMsg(null);
+      }
+    } catch {
+      setNoteMsg({ kind: "error", text: "Could not send" });
+    } finally {
+      setSending(false);
+    }
   };
 
   // Drop expired instants from the feed without waiting for the next fetch
@@ -144,7 +249,47 @@ export default function InstantsWidget() {
     return () => clearInterval(t);
   }, []);
 
-  const activeInstant = instants.find((i) => i.id === activeId);
+  const neighbours = (inst) => {
+    const idx = instants.findIndex((i) => i.id === inst.id);
+    return {
+      prev: idx > 0 ? instants[idx - 1] : null,
+      next: idx >= 0 && idx < instants.length - 1 ? instants[idx + 1] : null,
+    };
+  };
+
+  const reactionRow = (inst, large) =>
+    reactionsOn && (
+      <div className={`flex items-center ${large ? "gap-3" : "gap-1"} flex-wrap`}>
+        {REACTIONS.map((emoji) => {
+          const count = reactionCounts[inst.id]?.[emoji] || 0;
+          const isMine = mine[inst.id]?.has(emoji);
+          return (
+            <button
+              key={emoji}
+              onClick={(e) => {
+                e.stopPropagation();
+                react(inst, emoji);
+              }}
+              aria-label={`react ${emoji}`}
+              className={`flex items-center gap-1 rounded-full font-body transition-all active:scale-90 ${
+                large ? "px-2.5 py-1 text-sm" : "px-1.5 py-0.5 text-[11px]"
+              } ${isMine ? "font-semibold" : ""}`}
+              style={{
+                backgroundColor: isMine
+                  ? "rgba(255,255,255,0.18)"
+                  : count > 0
+                  ? "rgba(255,255,255,0.08)"
+                  : "transparent",
+                border: isMine ? "1px solid rgba(255,255,255,0.3)" : "1px solid transparent",
+              }}
+            >
+              <span className={isMine ? "scale-110" : "opacity-80"}>{emoji}</span>
+              {count > 0 && <span className="text-white/80">{count}</span>}
+            </button>
+          );
+        })}
+      </div>
+    );
 
   return (
     <>
@@ -170,189 +315,212 @@ export default function InstantsWidget() {
         )}
       </motion.button>
 
-      {/* The feed panel */}
+      {/* The feed panel — dark IG-instants look */}
       <AnimatePresence>
-        {open && (
+        {open && !viewing && (
           <motion.div
             initial={{ opacity: 0, y: 24, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.96 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed bottom-20 right-5 z-40 w-[min(92vw,380px)] max-h-[70vh] rounded-2xl shadow-2xl border overflow-hidden flex flex-col"
-            style={{
-              backgroundColor: "var(--bg-color, #FAF3E8)",
-              borderColor: "var(--text-color, #292524)" + "20",
-              color: "var(--text-color, #292524)",
-            }}
+            className="fixed bottom-20 right-5 z-40 w-[min(92vw,380px)] max-h-[70vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+            style={{ backgroundColor: "#0b0b0b", color: "#f4f4f5", border: "1px solid rgba(255,255,255,0.08)" }}
           >
-            {/* Header */}
-            <div
-              className="px-4 py-3 border-b flex items-center gap-2 shrink-0"
-              style={{ borderColor: "var(--text-color, #292524)" + "15" }}
-            >
-              <Sparkles className="w-4 h-4 opacity-60" />
-              <p className="font-serif-display font-bold text-sm">instants</p>
-              <span className="font-body text-[10px] opacity-50 flex items-center gap-1 ml-auto">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                live
-              </span>
-            </div>
+          <div className="px-4 py-3 flex items-center gap-2 shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+            <Sparkles className="w-4 h-4 text-zinc-400" />
+            <p className="font-serif-display font-bold text-sm">instants</p>
+            <span className="font-body text-[10px] text-zinc-400 flex items-center gap-1 ml-auto">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              live
+            </span>
+          </div>
 
-            {/* Feed */}
-            <div ref={feedRef} className="overflow-y-auto p-3 space-y-2.5 flex-1">
-              {!loaded ? (
-                <p className="font-body text-xs opacity-40 text-center py-8">loading…</p>
-              ) : instants.length === 0 ? (
-                <p className="font-body text-xs opacity-40 text-center py-8">
-                  no instants yet — the first spark lands here
-                </p>
-              ) : (
-                <AnimatePresence initial={false}>
-                  {instants.map((instant) => (
-                    <motion.div
-                      key={instant.id}
-                      layout
-                      initial={{ opacity: 0, y: -12, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      transition={{ duration: 0.25 }}
-                      className={`rounded-xl border p-3 font-body ${
-                        activeId === instant.id ? "ring-1" : ""
-                      }`}
-                      style={{
-                        borderColor: "var(--text-color, #292524)" + "18",
-                        backgroundColor: "var(--text-color, #292524)" + "06",
-                      }}
+          <div ref={feedRef} className="overflow-y-auto p-3 space-y-4 flex-1" style={{ scrollbarWidth: "thin" }}>
+            {!loaded ? (
+              <p className="font-body text-xs text-zinc-500 text-center py-8">loading…</p>
+            ) : instants.length === 0 ? (
+              <p className="font-body text-xs text-zinc-500 text-center py-8">
+                no instants yet — the first spark lands here
+              </p>
+            ) : (
+              <AnimatePresence initial={false}>
+                {instants.map((instant) => (
+                  <motion.div
+                    key={instant.id}
+                    layout
+                    initial={{ opacity: 0, y: -12, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.25 }}
+                  >
+                    <button
+                      onClick={() => openThoughts(instant)}
+                      className="block w-full text-left group"
+                      aria-label="open instant"
                     >
-                      {instant.text && (
-                        <p className="text-sm leading-snug whitespace-pre-wrap break-words">
-                          {instant.text}
-                        </p>
-                      )}
-                      {instant.image_url && (
-                        <img
-                          src={instant.image_url}
-                          alt=""
-                          loading="lazy"
-                          className="mt-2 rounded-lg max-h-56 w-full object-cover"
-                        />
-                      )}
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-[10px] opacity-40">
+                      <div className="relative rounded-3xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+                        {instant.image_url ? (
+                          <img
+                            src={instant.image_url}
+                            alt=""
+                            loading="lazy"
+                            className="w-full max-h-80 object-cover aspect-[4/5]"
+                          />
+                        ) : (
+                          <div className="w-full aspect-[4/5] max-h-80 flex items-center justify-center p-5"
+                               style={{ background: "linear-gradient(145deg, #1c1c1e, #2a2a2c)" }}>
+                            <p className="text-[15px] leading-snug whitespace-pre-wrap break-words text-zinc-100 font-body">
+                              {instant.text}
+                            </p>
+                          </div>
+                        )}
+                        {instant.image_url && instant.text && (
+                          <div className="absolute inset-x-0 bottom-0 p-4 pt-12 bg-gradient-to-t from-black/85 to-transparent">
+                            <p className="text-[13px] leading-snug whitespace-pre-wrap break-words text-white">
+                              {instant.text}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between mt-1.5 px-1">
+                        <span className="text-[10px] text-zinc-500">
                           {timeAgo(instant.created_at)}
                           {instant.expires_at && expiresLabel(instant.expires_at) && (
-                            <span className="ml-1.5" style={{ color: "var(--accent-color, #78716c)" }}>
-                              · {expiresLabel(instant.expires_at)}
-                            </span>
+                            <span className="ml-1.5 text-amber-400/80">· {expiresLabel(instant.expires_at)}</span>
                           )}
                         </span>
-                        <div className="flex items-center gap-2">
-                          {instant.link_url && (
-                            <a
-                              href={instant.link_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[10px] underline opacity-50 hover:opacity-100"
-                            >
-                              source
-                            </a>
-                          )}
-                          <button
-                            onClick={() =>
-                              activeId === instant.id ? setActiveId(null) : openThoughts(instant.id)
-                            }
-                            className="text-[10px] flex items-center gap-1 opacity-60 hover:opacity-100"
-                          >
-                            <MessageCircle className="w-3 h-3" /> think along
-                          </button>
-                        </div>
+                        <span className="text-[10px] text-zinc-500 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <MessageCircle className="w-3 h-3" /> notes & reactions
+                        </span>
                       </div>
+                    </button>
+                    {reactionRow(instant, false)}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            )}
+          </div>
 
-                      {/* Thought thread */}
-                      {activeId === instant.id && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          className="mt-3 pt-3 border-t overflow-hidden"
-                          style={{ borderColor: "var(--text-color, #292524)" + "15" }}
-                        >
-                          {thoughts.length > 0 && (
-                            <div className="space-y-2 mb-3">
-                              {thoughts.map((t) => (
-                                <div key={t.id} className="text-xs">
-                                  <span className="font-medium">{t.author_name}</span>
-                                  <span className="opacity-70"> {t.body}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <form onSubmit={submitThought} className="space-y-1.5">
-                            <input
-                              required
-                              value={thoughtForm.author_name}
-                              onChange={(e) => setThoughtForm((f) => ({ ...f, author_name: e.target.value }))}
-                              placeholder="your name"
-                              className="w-full text-xs px-2 py-1.5 rounded-lg border bg-transparent outline-none focus:ring-1"
-                              style={{ borderColor: "var(--text-color, #292524)" + "25" }}
-                            />
-                            <input
-                              required
-                              type="email"
-                              value={thoughtForm.email}
-                              onChange={(e) => setThoughtForm((f) => ({ ...f, email: e.target.value }))}
-                              placeholder="email — new folks join the waitlist"
-                              className="w-full text-xs px-2 py-1.5 rounded-lg border bg-transparent outline-none focus:ring-1"
-                              style={{ borderColor: "var(--text-color, #292524)" + "25" }}
-                            />
-                            <div className="flex gap-1.5">
-                              <input
-                                required
-                                value={thoughtForm.body}
-                                onChange={(e) => setThoughtForm((f) => ({ ...f, body: e.target.value }))}
-                                placeholder="your thought…"
-                                className="flex-1 text-xs px-2 py-1.5 rounded-lg border bg-transparent outline-none focus:ring-1"
-                                style={{ borderColor: "var(--text-color, #292524)" + "25" }}
-                              />
-                              <button
-                                type="submit"
-                                disabled={sending}
-                                className="px-2.5 rounded-lg flex items-center justify-center disabled:opacity-40"
-                                style={{ backgroundColor: "var(--accent-color, #78716c)", color: "var(--bg-color, #FAF3E8)" }}
-                              >
-                                <Send className="w-3 h-3" />
-                              </button>
-                            </div>
-                            {thoughtMsg && (
-                              <p
-                                className={`text-[10px] ${
-                                  thoughtMsg.kind === "error" ? "text-red-500" : "opacity-60"
-                                }`}
-                              >
-                                {thoughtMsg.text}
-                              </p>
-                            )}
-                          </form>
-                        </motion.div>
-                      )}
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
+          <p
+            className="px-4 py-2 text-[10px] font-body text-zinc-500 border-t shrink-0"
+            style={{ borderColor: "rgba(255,255,255,0.07)" }}
+          >
+            sparks & concepts I meet during the day —{" "}
+            <a href={createPageUrl("Recap")} onClick={() => setOpen(false)} className="underline hover:text-zinc-300">
+              browse the recap
+            </a>
+          </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* IG-style single-instant viewer */}
+      <AnimatePresence>
+        {open && viewing && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed bottom-20 right-5 z-40 w-[min(92vw,380px)] max-h-[78vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+            style={{ backgroundColor: "#0b0b0b", color: "#f4f4f5", border: "1px solid rgba(255,255,255,0.08)" }}
+          >
+            {/* viewer header */}
+            <div className="px-4 py-3 flex items-center gap-2 shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+              <button
+                onClick={() => setViewing(null)}
+                className="text-zinc-400 hover:text-white"
+                aria-label="back to feed"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <p className="text-xs text-zinc-400 font-body">
+                {timeAgo(viewing.created_at)}
+                {viewing.expires_at && expiresLabel(viewing.expires_at) && (
+                  <span className="ml-1.5 text-amber-400/80">· {expiresLabel(viewing.expires_at)}</span>
+                )}
+              </p>
+              {viewing.link_url && (
+                <a
+                  href={viewing.link_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-auto text-[11px] underline text-zinc-400 hover:text-white truncate max-w-[130px]"
+                >
+                  source
+                </a>
               )}
             </div>
 
-            <p
-              className="px-4 py-2 text-[10px] font-body opacity-40 border-t shrink-0"
-              style={{ borderColor: "var(--text-color, #292524)" + "12" }}
-            >
-              sparks & concepts I meet during the day —{" "}
-              <a
-                href={createPageUrl("Recap")}
-                onClick={() => setOpen(false)}
-                className="underline hover:opacity-100"
-              >
-                browse the recap
-              </a>
-            </p>
+            <div className="overflow-y-auto flex-1" style={{ scrollbarWidth: "thin" }}>
+              {/* big rounded media / gradient placeholder */}
+              <div className="p-3">
+                <div className="relative rounded-[28px] overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+                  {viewing.image_url ? (
+                    <img src={viewing.image_url} alt="" className="w-full aspect-[4/5] object-cover" />
+                  ) : (
+                    <div className="w-full aspect-[4/5] flex items-center justify-center p-6"
+                         style={{ background: "linear-gradient(145deg, #1c1c1e, #2a2a2c)" }}>
+                      <p className="text-base leading-snug whitespace-pre-wrap break-words text-zinc-100 font-body">
+                        {viewing.text}
+                      </p>
+                    </div>
+                  )}
+                  {viewing.image_url && viewing.text && (
+                    <div className="absolute inset-x-0 bottom-0 p-4 pt-14 bg-gradient-to-t from-black/85 to-transparent">
+                      <p className="text-sm leading-snug whitespace-pre-wrap break-words text-white">
+                        {viewing.text}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-3 px-1">
+                  {reactionRow(viewing, true)}
+                </div>
+              </div>
+
+              {/* notes thread */}
+              <div className="px-4 pb-4">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500 mb-2 font-body">notes</p>
+                <div className="space-y-2 mb-3">
+                  {thoughts.length === 0 ? (
+                    <p className="text-xs text-zinc-600">no notes yet — leave one, no name needed</p>
+                  ) : (
+                    thoughts.map((t) => (
+                      <div key={t.id} className="text-xs leading-snug">
+                        <span className="text-zinc-400">{t.author_name === "someone" || !t.author_name ? "" : t.author_name}</span>
+                        <span className="text-zinc-100"> {t.body}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <form onSubmit={submitNote} className="flex gap-1.5">
+                  <input
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    placeholder="leave a note… (no name, no email)"
+                    maxLength={1200}
+                    className="flex-1 text-xs px-3 py-2.5 rounded-full bg-white/5 border outline-none focus:ring-1 text-white placeholder:text-zinc-600"
+                    style={{ borderColor: "rgba(255,255,255,0.12)" }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={sending || !noteDraft.trim()}
+                    aria-label="send note"
+                    className="px-3 rounded-full flex items-center justify-center disabled:opacity-30"
+                    style={{ backgroundColor: "#fafaf9", color: "#0b0b0b" }}
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+                {noteMsg && (
+                  <p className={`text-[10px] mt-1.5 ${noteMsg.kind === "error" ? "text-red-400" : "text-zinc-500"}`}>
+                    {noteMsg.text}
+                  </p>
+                )}
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

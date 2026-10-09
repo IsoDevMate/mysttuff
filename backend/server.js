@@ -395,7 +395,7 @@ app.delete('/api/admin/hot-takes/:id', authenticateToken, async (req, res) => {
 //
 // Flip switches from the admin panel (Admin → Flags). No redeploy needed.
 
-const KNOWN_FLAGS = ['instants_widget', 'instants_gallery_film', 'instants_home_section'];
+const KNOWN_FLAGS = ['instants_widget', 'instants_gallery_film', 'instants_home_section', 'instants_reactions'];
 
 async function getFlagStates() {
   const result = await db.execute('SELECT key, state FROM site_flags');
@@ -576,6 +576,7 @@ app.delete('/api/admin/instants/:id', authenticateToken, async (req, res) => {
   try {
     await db.execute({ sql: 'DELETE FROM instants WHERE id = ?', args: [req.params.id] });
     await db.execute({ sql: 'DELETE FROM instant_thoughts WHERE instant_id = ?', args: [req.params.id] });
+    await db.execute({ sql: 'DELETE FROM instant_reactions WHERE instant_id = ?', args: [req.params.id] });
     await auditLog('DELETE', 'instant', req.params.id, req.params.id);
     broadcastInstants('instant:remove', { id: req.params.id });
     res.json({ success: true });
@@ -584,14 +585,38 @@ app.delete('/api/admin/instants/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Thoughts on an instant — visible to all; writing is waitlist-gated.
-// Unknown emails go straight onto the waitlist as 'pending' (Locket-style ask-to-join).
+// Moderation — remove a single note (free notes mean occasional cleanup)
+app.delete('/api/admin/instants/:id/thoughts/:thoughtId', authenticateToken, async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM instant_thoughts WHERE id = ? AND instant_id = ?', args: [req.params.thoughtId, req.params.id] });
+    await auditLog('DELETE', 'thought', req.params.thoughtId, req.params.id);
+    broadcastInstants('thought:remove', { instantId: req.params.id, thoughtId: req.params.thoughtId });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Thoughts → free notes. No email, no name, no waitlist: anyone can leave a
+// note and it goes live instantly. Moderation = admin delete (audit-logged).
+// Light per-visitor rate limit keeps drive-by spam tolerable between deletes.
+const noteBuckets = new Map(); // visitorId -> timestamps[]
+function noteRateOk(visitorId) {
+  const now = Date.now();
+  const stamps = (noteBuckets.get(visitorId) || []).filter((t) => now - t < 60_000);
+  if (stamps.length >= 8) return false;
+  stamps.push(now);
+  noteBuckets.set(visitorId, stamps);
+  return true;
+}
+
 app.get('/api/instants/:id/thoughts', async (req, res) => {
   try {
     const result = await db.execute({
-      sql: 'SELECT * FROM instant_thoughts WHERE instant_id = ? AND approved = 1 ORDER BY created_at ASC',
+      sql: 'SELECT * FROM instant_thoughts WHERE instant_id = ? ORDER BY created_at ASC',
       args: [req.params.id],
     });
+    res.set('Cache-Control', 'no-store');
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -599,42 +624,117 @@ app.get('/api/instants/:id/thoughts', async (req, res) => {
 });
 
 app.post('/api/instants/:id/thoughts', async (req, res) => {
-  const { author_name, body, email } = req.body;
-  if (!author_name?.trim() || !body?.trim()) {
-    return res.status(400).json({ error: 'Name and thought are required' });
+  const { body, visitor_id } = req.body;
+  if (!body?.trim()) {
+    return res.status(400).json({ error: 'Write something first' });
   }
-  if (!email?.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) {
-    return res.status(400).json({ error: 'A valid email is required — new folks join the waitlist first' });
+  if (body.length > 1200) {
+    return res.status(400).json({ error: 'That is a whole article — keep it a note (max 1200 chars)' });
+  }
+  const visitor = visitor_id?.trim() || 'anon';
+  if (!noteRateOk(visitor)) {
+    return res.status(429).json({ error: 'Easy there — try again in a minute' });
   }
   try {
-    const instant = await db.execute({ sql: 'SELECT id FROM instants WHERE id = ? AND published = 1', args: [req.params.id] });
+    const instant = await db.execute({
+      sql: 'SELECT id FROM instants WHERE id = ? AND published = 1',
+      args: [req.params.id],
+    });
     if (!instant.rows.length) return res.status(404).json({ error: 'Instant not found' });
 
-    const wl = await db.execute({ sql: 'SELECT status FROM waitlist WHERE email = ?', args: [email.trim().toLowerCase()] });
-    if (!wl.rows.length) {
-      await db.execute({
-        sql: 'INSERT INTO waitlist (id, email, name, status) VALUES (?, ?, ?, ?)',
-        args: [uuidv4(), email.trim().toLowerCase(), author_name.trim(), 'pending'],
+    const author = (await db.execute({
+      sql: 'SELECT username FROM admin_users LIMIT 1',
+    })).rows[0]?.username || 'the blog';
+    // Approved emails from the old waitlist can still sign their notes;
+    // everyone else is "someone" (IG-instants vibes: content over identity).
+    let authorName = null;
+    if (visitor.startsWith('wl:')) {
+      const wl = await db.execute({
+        sql: "SELECT name, email FROM waitlist WHERE email = ? AND status = 'approved'",
+        args: [visitor.slice(3).toLowerCase()],
       });
-      return res.status(202).json({
-        queued: true,
-        message: "You're on the waitlist! Your thought will go live once you're approved.",
-      });
+      authorName = wl.rows[0]?.name || wl.rows[0]?.email?.split('@')[0] || null;
     }
-    if (wl.rows[0].status !== 'approved') {
-      return res.status(202).json({
-        queued: true,
-        message: "You're still on the waitlist — your thought will go live once you're approved.",
-      });
-    }
+
     const id = uuidv4();
     await db.execute({
       sql: 'INSERT INTO instant_thoughts (id, instant_id, author_name, body, approved) VALUES (?, ?, ?, ?, 1)',
-      args: [id, req.params.id, author_name.trim(), body.trim()],
+      args: [id, req.params.id, authorName || 'someone', body.trim()],
     });
     const row = (await db.execute({ sql: 'SELECT * FROM instant_thoughts WHERE id = ?', args: [id] })).rows[0];
     broadcastInstants('thought:new', { instantId: req.params.id, thought: row });
     res.json(row);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ─── Reactions (IG-instants emoji row) ──────────────────────────────────────
+// Anonymous: visitor_id is a random browser id, never an identity. One row per
+// (instant, emoji, visitor) — reacting again removes (IG toggle behavior).
+
+app.get('/api/instants/:id/reactions', async (req, res) => {
+  try {
+    const result = await db.execute({
+      sql: 'SELECT emoji, COUNT(*) as count FROM instant_reactions WHERE instant_id = ? GROUP BY emoji',
+      args: [req.params.id],
+    });
+    const visitor = req.query.visitor_id?.trim();
+    let mine = [];
+    if (visitor) {
+      const m = await db.execute({
+        sql: 'SELECT emoji FROM instant_reactions WHERE instant_id = ? AND visitor_id = ?',
+        args: [req.params.id, visitor],
+      });
+      mine = m.rows.map((r) => r.emoji);
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({ counts: result.rows, mine });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/instants/:id/reactions', async (req, res) => {
+  const { emoji, visitor_id } = req.body;
+  if (!emoji || typeof emoji !== 'string' || emoji.length > 8) {
+    return res.status(400).json({ error: 'Bad emoji' });
+  }
+  if (!visitor_id?.trim()) return res.status(400).json({ error: 'Missing visitor id' });
+  try {
+    const instant = await db.execute({
+      sql: 'SELECT id FROM instants WHERE id = ?',
+      args: [req.params.id],
+    });
+    if (!instant.rows.length) return res.status(404).json({ error: 'Instant not found' });
+
+    const existing = await db.execute({
+      sql: 'SELECT id FROM instant_reactions WHERE instant_id = ? AND emoji = ? AND visitor_id = ?',
+      args: [req.params.id, emoji, visitor_id.trim()],
+    });
+    let reacted;
+    if (existing.rows.length) {
+      await db.execute({ sql: 'DELETE FROM instant_reactions WHERE id = ?', args: [existing.rows[0].id] });
+      reacted = false;
+    } else {
+      const count = await db.execute({
+        sql: 'SELECT COUNT(*) as count FROM instant_reactions WHERE instant_id = ? AND visitor_id = ?',
+        args: [req.params.id, visitor_id.trim()],
+      });
+      if (Number(count.rows[0].count) >= 6) {
+        return res.status(400).json({ error: 'Max 6 different reactions per person' });
+      }
+      await db.execute({
+        sql: 'INSERT INTO instant_reactions (id, instant_id, emoji, visitor_id) VALUES (?, ?, ?, ?)',
+        args: [uuidv4(), req.params.id, emoji, visitor_id.trim()],
+      });
+      reacted = true;
+    }
+    const counts = await db.execute({
+      sql: 'SELECT emoji, COUNT(*) as count FROM instant_reactions WHERE instant_id = ? GROUP BY emoji',
+      args: [req.params.id],
+    });
+    res.json({ reacted, counts: counts.rows });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

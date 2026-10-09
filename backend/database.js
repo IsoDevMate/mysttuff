@@ -90,6 +90,13 @@ if (process.env.TURSO_AUTH_TOKEN) {
       approved INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS instant_reactions (
+      id TEXT PRIMARY KEY,
+      instant_id TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      visitor_id TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
     `CREATE TABLE IF NOT EXISTS site_flags (
       key TEXT PRIMARY KEY,
       state TEXT NOT NULL DEFAULT 'off' CHECK (state IN ('off', 'canary', 'on')),
@@ -118,6 +125,7 @@ if (process.env.TURSO_AUTH_TOKEN) {
     ['instants_widget', 'on'],
     ['instants_gallery_film', 'on'],
     ['instants_home_section', 'on'],
+    ['instants_reactions', 'canary'],
   ];
   for (const [key, state] of defaultFlags) {
     try {
