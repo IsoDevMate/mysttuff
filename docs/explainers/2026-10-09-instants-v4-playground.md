@@ -123,6 +123,46 @@ literally true.
    with zero matches? *(Long articles shouldn't drown under strips; and an
    empty strip section returns null — no heading, no gap — reading flow is
    untouched when there's no link.)*
+7. On the photo canvas, which tile is the cover, and what happens if the
+   save request fails? *(Position 0 — demoting it is impossible in the UI,
+   and a failed save keeps every tile plus its arrangement on the canvas for
+   retry; nothing is half-written server-side because the PUT is atomic.)*
+8. Why does PhotoCanvas portal to document.body instead of rendering inside
+   the studio component tree? *(StrictMode double-mount and App-level
+   AnimatePresence route transitions would otherwise unmount it mid-edit —
+   erasing an unsaved arrangement during navigation.)*
+
+## 5. PhotoCanvas — the "50-photo moment", real this time
+
+`PhotoCanvas.jsx` is the first true *temporary creative mode*: a full-screen
+workspace that mounts only when a task calls for it (from the "drop photos"
+leap or a loose-ends card) and unmounts when the task is done.
+
+**What direct manipulation means here:**
+
+- Drop or pick a whole batch → uploads run one-by-one through the existing
+  `api.uploadFile` (R2) pipeline; each thumbnail appears the moment *its*
+  upload lands, while the rest are still in flight. Perceived speed > raw speed.
+- Reorder by dragging tiles, or by hover buttons (`← earlier` / `later →`)
+  that also work without precise pointer gestures. Position 0 **is** the
+  cover — the badge lives on the tile, not in a dropdown.
+- Save is blocked until uploads finish (`hasPending`), disabled state shows
+  why. The footer states the truth: esc/discard writes nothing; save failure
+  keeps everything on the canvas for retry — no silent data loss in either
+  direction.
+
+**Engineering notes worth keeping in mind:**
+
+- `media` arrives as a JSON *string* (Turso TEXT column) — `parseMedia`
+  normalizes string/array/legacy `image_url`-only rows, same contract as the
+  public site's `getMedia()`.
+- The canvas mounts through `createPortal(..., document.body)` so StrictMode
+  double-mounts and App-level `AnimatePresence mode="wait"` route transitions
+  can never unmount it mid-edit; the portal key (`canvasItem.id || 'new'`)
+  separates create from edit instances.
+- `onClick={onClose(false)}` (vs `() =>`) would call `setCanvasItem(null)
+during render` — a real bug class this codebase hit; check for it in any
+  future `onClose(fn)` style APIs.
 
 ## What's next (honest ledger)
 
