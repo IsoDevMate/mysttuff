@@ -78,6 +78,17 @@ export default function InstantsWidget() {
   const [noteMsg, setNoteMsg] = useState(null);
   const [sending, setSending] = useState(false);
   const seenIds = useRef(new Set());
+  const [seen, setSeen] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("instantsSeen") || "[]")); } catch { return new Set(); }
+  }); // viewed instants — unread/new state in the feed
+  const markSeen = (id) =>
+    setSeen((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      try { localStorage.setItem("instantsSeen", JSON.stringify([...next].slice(-400))); } catch {}
+      return next;
+    });
   const vId = useRef(visitorId());
   const feedRef = useRef(null);
   const inFlight = useRef(new Set()); // "instantId:emoji" — serialize rapid toggles
@@ -183,8 +194,41 @@ export default function InstantsWidget() {
   const openThoughts = (instant) => {
     setViewing(instant);
     setNoteMsg(null);
+    markSeen(instant.id);
     loadThoughts(instant.id);
   };
+
+  // Auto-advance: stories-style, 6s per instant, pause while typing a note.
+  useEffect(() => {
+    if (!viewing) return;
+    if (seen.has(viewing.id)) return; // already-viewed → no auto-advance, browse freely
+    if (noteDraft) return; // typing → hold
+    const t = setTimeout(() => {
+      const { next } = neighbours(viewing);
+      if (next) {
+        markSeen(next.id);
+        setViewing(next);
+      }
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [viewing, seen, noteDraft]);
+
+  // Keyboard: ←/→ step, Esc closes (desktop feel)
+  useEffect(() => {
+    if (!viewing) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setViewing(null);
+      else if (e.key === "ArrowRight") {
+        const { next } = neighbours(viewing);
+        if (next) { markSeen(next.id); setViewing(next); }
+      } else if (e.key === "ArrowLeft") {
+        const { prev } = neighbours(viewing);
+        if (prev) setViewing(prev);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewing]);
 
   const react = async (instant, emoji) => {
     // serialize rapid toggles against slow networks: ignore clicks while this
@@ -467,7 +511,16 @@ export default function InstantsWidget() {
                     exit={{ opacity: 0, scale: 0.95 }}
                     transition={{ duration: 0.25 }}
                   >
-                    <button
+                    <>
+                      {!seen.has(instant.id) && loaded && (
+                        <span
+                          className="inline-flex ml-1 mb-1 px-2 py-0.5 rounded-full text-[9px] font-body tracking-wide"
+                          style={{ backgroundColor: "var(--accent-color, #78716c)", color: "var(--bg-color, #FAF3E8)" }}
+                        >
+                          new
+                        </span>
+                      )}
+                      <button
                       onClick={() => openThoughts(instant)}
                       className="block w-full text-left group"
                       aria-label="open instant"
@@ -528,6 +581,7 @@ export default function InstantsWidget() {
                       </div>
                     </button>
                     {reactionRow(instant, false)}
+                    </>
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -547,74 +601,141 @@ export default function InstantsWidget() {
         )}
       </AnimatePresence>
 
-      {/* IG-style single-instant viewer */}
+      {/* IG-style full-screen viewer — immersive, progress bar, tap zones */}
       <AnimatePresence>
         {open && viewing && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed bottom-20 right-5 z-40 w-[min(92vw,380px)] max-h-[78vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
-            style={{ backgroundColor: "#0b0b0b", color: "#f4f4f5", border: "1px solid rgba(255,255,255,0.08)" }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center"
+            style={{ backgroundColor: "rgba(8,8,8,0.93)", backdropFilter: "blur(10px)" }}
           >
-            {/* viewer header */}
-            <div className="px-4 py-3 flex items-center gap-2 shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
-              <button
-                onClick={() => setViewing(null)}
-                className="text-zinc-400 hover:text-white"
-                aria-label="back to feed"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <p className="text-xs text-zinc-400 font-body">
-                {timeAgo(viewing.created_at)}
-                {viewing.expires_at && expiresLabel(viewing.expires_at) && (
-                  <span className="ml-1.5 text-amber-400/80">· {expiresLabel(viewing.expires_at)}</span>
-                )}
-              </p>
-              {viewing.link_url && (
-                <a
-                  href={viewing.link_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="ml-auto text-[11px] underline text-zinc-400 hover:text-white truncate max-w-[130px]"
-                >
-                  source
-                </a>
+            <style>{`@keyframes v4progress { from { width: 0% } to { width: 100% } }
+              @media (prefers-reduced-motion: reduce) { .v4-prog { animation: none !important; width: 100% !important } }`}</style>
+
+            {/* close */}
+            <button
+              onClick={() => setViewing(null)}
+              aria-label="close viewer"
+              className="absolute top-4 right-4 z-30 w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:text-white"
+              style={{ backgroundColor: "rgba(255,255,255,0.10)" }}
+            >
+              <X className="w-4.5 h-4.5" />
+            </button>
+
+            <p className="absolute top-5 left-5 z-30 text-xs text-zinc-400 font-body pointer-events-none">
+              {timeAgo(viewing.created_at)}
+              {viewing.expires_at && expiresLabel(viewing.expires_at) && (
+                <span className="ml-1.5 text-amber-400/80">· {expiresLabel(viewing.expires_at)}</span>
               )}
+            </p>
+
+            {/* typed-stack progress bar */}
+            <div className="absolute top-4 inset-x-24 sm:inset-x-[calc(50%-215px)] z-20 flex gap-1 pointer-events-none">
+              {instants.map((i, k) => {
+                const vi = instants.findIndex((x) => x.id === viewing.id);
+                return (
+                  <div key={i.id} className="h-[2.5px] flex-1 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(255,255,255,0.22)" }}>
+                    {k < vi && <div className="h-full bg-white" style={{ width: "100%" }} />}
+                    {k === vi && (
+                      <div
+                        className="h-full bg-white v4-prog"
+                        style={{ width: 0, animation: seen?.has(viewing.id) ? "none" : "v4progress 6s linear forwards" }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
-            <div className="overflow-y-auto flex-1" style={{ scrollbarWidth: "thin" }}>
-              {/* big rounded media / gradient placeholder */}
-              <div className="p-3">
-                <div className="relative rounded-[28px] overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
-                  {viewing.image_url ? (
-                    <img src={viewing.image_url} alt="" className="w-full aspect-[4/5] object-cover" />
-                  ) : (
-                    <div className="w-full aspect-[4/5] flex items-center justify-center p-6"
-                         style={{ background: "linear-gradient(145deg, #1c1c1e, #2a2a2c)" }}>
-                      <p className="text-base leading-snug whitespace-pre-wrap break-words text-zinc-100 font-body">
-                        {viewing.text}
-                      </p>
-                    </div>
-                  )}
-                  {viewing.image_url && viewing.text && (
-                    <div className="absolute inset-x-0 bottom-0 p-4 pt-14 bg-gradient-to-t from-black/85 to-transparent">
-                      <p className="text-sm leading-snug whitespace-pre-wrap break-words text-white">
-                        {viewing.text}
-                      </p>
-                    </div>
-                  )}
-                </div>
+            {/* desktop edge arrows */}
+            {neighbours(viewing).prev && (
+              <button
+                onClick={() => setViewing(neighbours(viewing).prev)}
+                aria-label="previous instant"
+                className="hidden sm:flex absolute left-6 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full items-center justify-center text-white/80 hover:text-white"
+                style={{ backgroundColor: "rgba(255,255,255,0.08)" }}
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+            )}
+            {neighbours(viewing).next && (
+              <button
+                onClick={() => setViewing(neighbours(viewing).next)}
+                aria-label="next instant"
+                className="hidden sm:flex absolute right-6 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full items-center justify-center text-white/80 hover:text-white"
+                style={{ backgroundColor: "rgba(255,255,255,0.08)" }}
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            )}
 
-                <div className="mt-3 px-1">
-                  {reactionRow(viewing, true)}
-                </div>
+            {/* media column */}
+            <motion.div
+              key={viewing.id}
+              initial={{ opacity: 0, scale: 0.985, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              className="relative w-[min(100vw,430px)] max-h-[94dvh] flex flex-col overflow-hidden"
+              style={{ backgroundColor: "#0b0b0b", borderRadius: "28px", border: "1px solid rgba(255,255,255,0.10)" }}
+            >
+              {/* media + tap zones */}
+              <div className="relative flex-none">
+                {viewing.image_url ? (
+                  <img src={viewing.image_url} alt="" className="w-full aspect-[4/5] object-cover" />
+                ) : (
+                  <div className="w-full aspect-[4/5] flex items-center justify-center p-7"
+                       style={{ background: "linear-gradient(145deg, #1c1c1e, #2a2a2c)" }}>
+                    <p className="text-base leading-snug whitespace-pre-wrap break-words text-zinc-100 font-body">
+                      {viewing.text}
+                    </p>
+                  </div>
+                )}
+                {viewing.image_url && viewing.text && (
+                  <div className="absolute inset-x-0 bottom-0 p-4 pt-14 bg-gradient-to-t from-black/85 to-transparent">
+                    <p className="text-sm leading-snug whitespace-pre-wrap break-words text-white">
+                      {viewing.text}
+                    </p>
+                  </div>
+                )}
+                {viewing.link_url && (
+                  <a
+                    href={viewing.link_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="absolute top-10 left-4 text-[11px] underline text-white/80 hover:text-white bg-black/40 px-2 py-1 rounded-full"
+                  >
+                    source
+                  </a>
+                )}
+                {/* IG tap zones: left third back, right third forward (media only) */}
+                {neighbours(viewing).prev && (
+                  <button
+                    aria-label="previous"
+                    onClick={() => setViewing(neighbours(viewing).prev)}
+                    className="absolute inset-y-0 left-0 w-1/3"
+                  />
+                )}
+                {neighbours(viewing).next && (
+                  <button
+                    aria-label="next"
+                    onClick={() => setViewing(neighbours(viewing).next)}
+                    className="absolute inset-y-0 right-0 w-1/3"
+                  />
+                )}
               </div>
 
-              {/* notes thread */}
-              <div className="px-4 pb-4">
+              {/* reactions (large, tap-friendly) */}
+              <div className="flex-none px-3 pt-3">
+                {reactionRow(viewing, true) || (
+                  <div className="h-[26px]" />
+                )}
+              </div>
+
+              {/* notes thread — bottom sheet scroll */}
+              <div className="overflow-y-auto px-4 py-3 min-h-[70px]" style={{ scrollbarWidth: "thin" }}>
                 <p className="text-[11px] uppercase tracking-wide text-zinc-500 mb-2 font-body">notes</p>
                 <div className="space-y-2 mb-3">
                   {thoughts.length === 0 ? (
@@ -653,7 +774,7 @@ export default function InstantsWidget() {
                   </p>
                 )}
               </div>
-            </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
