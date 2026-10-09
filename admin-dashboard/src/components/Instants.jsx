@@ -3,7 +3,7 @@ import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Zap, Plus, Trash2, Send, Users, Check, X, Clock } from 'lucide-react';
+import { Zap, Plus, Trash2, Send, Users, Check, X, Clock, MessageCircle, Heart } from 'lucide-react';
 import { api } from '../api';
 import toast from 'react-hot-toast';
 
@@ -20,7 +20,9 @@ const Instants = () => {
   const [linkUrl, setLinkUrl] = useState('');
   const [duration, setDuration] = useState('24h');
   const [sending, setSending] = useState(false);
-  const [tab, setTab] = useState('instants'); // 'instants' | 'waitlist'
+  const [tab, setTab] = useState('instants'); // 'instants' | 'waitlist' | 'notes'
+  const [notes, setNotes] = useState([]);
+  const [reactionSummary, setReactionSummary] = useState({});
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -29,12 +31,16 @@ const Instants = () => {
 
   const load = async () => {
     try {
-      const [instantsData, waitlistData] = await Promise.all([
+      const [instantsData, waitlistData, notesData, reactionsData] = await Promise.all([
         api.getInstants(),
         api.getWaitlist().catch(() => []),
+        api.getNotes().catch(() => []),
+        api.getReactionSummary().catch(() => {}),
       ]);
       setInstants(instantsData);
       setWaitlist(waitlistData);
+      setNotes(notesData);
+      setReactionSummary(reactionsData || {});
     } catch {
       toast.error('Failed to load instants');
     } finally {
@@ -110,8 +116,14 @@ const Instants = () => {
             <Zap className="h-3.5 w-3.5" /> Instants ({instants.length})
           </button>
           <button
+            onClick={() => setTab('notes')}
+            className={`px-4 py-1.5 text-sm flex items-center gap-1.5 border-r border-l ${tab === 'notes' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+          >
+            <MessageCircle className="h-3.5 w-3.5" /> Notes ({notes.length})
+          </button>
+          <button
             onClick={() => setTab('waitlist')}
-            className={`px-4 py-1.5 text-sm flex items-center gap-1.5 border-l ${tab === 'waitlist' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            className={`px-4 py-1.5 text-sm flex items-center gap-1.5 ${tab === 'waitlist' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
           >
             <Users className="h-3.5 w-3.5" /> Waitlist
             {pendingCount > 0 && (
@@ -208,6 +220,16 @@ const Instants = () => {
                         {!instant.expired && instant.expires_at && ` · expires ${new Date(instant.expires_at).toLocaleString()}`}
                         {!instant.expires_at && ' · kept forever'}
                       </p>
+                      {(reactionSummary[instant.id] || []).length > 0 && (
+                        <p className="text-[11px] mt-1 flex items-center gap-2 flex-wrap">
+                          <Heart className="h-3 w-3 text-pink-500" />
+                          {reactionSummary[instant.id].map((r) => (
+                            <span key={r.emoji} className="px-1.5 py-0.5 rounded bg-muted">
+                              {r.emoji} {r.count}
+                            </span>
+                          ))}
+                        </p>
+                      )}
                     </div>
                     <Button
                       variant="ghost"
@@ -223,6 +245,44 @@ const Instants = () => {
             )}
           </div>
         </>
+      ) : tab === 'notes' ? (
+        <div className="space-y-2">
+          {notes.length === 0 ? (
+            <p className="text-center text-muted-foreground py-10">
+              No notes yet — visitors post them without any signup, so this is your moderation queue.
+            </p>
+          ) : (
+            notes.map((n) => (
+              <Card key={n.id}>
+                <CardContent className="py-3 flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm">{n.body}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1 truncate">
+                      by {n.author_name || 'someone'} · {new Date(n.created_at + (n.created_at.endsWith('Z') ? '' : 'Z')).toLocaleString()}
+                      {n.instant_text && ` · on: “${n.instant_text.slice(0, 40)}”`}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-1.5 text-red-500 hover:text-red-600 shrink-0"
+                    onClick={async () => {
+                      try {
+                        await api.deleteNote(n.instant_id, n.id);
+                        setNotes((prev) => prev.filter((x) => x.id !== n.id));
+                        toast.success('Note removed');
+                      } catch {
+                        toast.error('Failed to remove note');
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
       ) : (
         <div className="space-y-2">
           {waitlist.length === 0 ? (

@@ -148,6 +148,21 @@ class ApiClient {
     });
   }
 
+  // Notes moderation
+  async getNotes() {
+    return this.request('/admin/notes');
+  }
+
+  async deleteNote(instantId, thoughtId) {
+    return this.request(`/admin/instants/${instantId}/thoughts/${thoughtId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getReactionSummary() {
+    return this.request('/admin/reaction-summary');
+  }
+
   // Feature flags
   async getFlags() {
     return this.request('/admin/flags');

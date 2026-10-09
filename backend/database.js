@@ -126,6 +126,7 @@ if (process.env.TURSO_AUTH_TOKEN) {
     ['instants_gallery_film', 'on'],
     ['instants_home_section', 'on'],
     ['instants_reactions', 'canary'],
+    ['instants_capture', 'canary'],
   ];
   for (const [key, state] of defaultFlags) {
     try {

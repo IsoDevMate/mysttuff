@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, X, Send, MessageCircle, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
+import { Zap, X, Send, MessageCircle, Sparkles, ChevronLeft, ChevronRight, Camera, Image as ImageIcon, RefreshCw, Circle, Loader2 } from "lucide-react";
 import { useFlags, flagOn } from "../../lib/flags";
 import { createPageUrl } from "../../lib/utils";
 
@@ -17,6 +17,22 @@ function visitorId() {
 }
 
 const REACTIONS = ["❤️", "😂", "🔥", "😮", "🥲", "👏"];
+
+// Client-side downscale/compress — keep uploads small on mobile data.
+async function compressToDataUrl(file, maxDim = 1080, quality = 0.82) {
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = rej;
+    i.src = URL.createObjectURL(file);
+  });
+  const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", quality);
+}
 
 function timeAgo(iso) {
   const then = new Date(iso.endsWith("Z") ? iso : iso + "Z").getTime();
@@ -48,8 +64,10 @@ function expiresLabel(iso) {
 export default function InstantsWidget() {
   const { flags } = useFlags();
   const reactionsOn = flagOn(flags, "instants_reactions");
+  const captureOn = flagOn(flags, "instants_capture");
 
   const [open, setOpen] = useState(false);
+  const [capture, setCapture] = useState(null); // null | {mode:'camera'|'roll'|'none', preview, caption, sending, error, facing}
   const [instants, setInstants] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [viewing, setViewing] = useState(null); // instant open in IG-style viewer
@@ -249,6 +267,92 @@ export default function InstantsWidget() {
     return () => clearInterval(t);
   }, []);
 
+  // ── Capture flow (flag-gated, admin-token verified like the canary check) ──
+  // admin-check: same token the flags provider verified — cheap re-read.
+  const isAdmin = !!localStorage.getItem("adminToken");
+
+  const startCapture = async (mode) => {
+    if (mode === "camera") {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: capture?.facing || "user", width: { ideal: 1080 } },
+          audio: false,
+        });
+        setCapture({ mode: "camera", stream, preview: null, caption: "", sending: false, error: null, facing: capture?.facing || "user" });
+      } catch {
+        setCapture({ mode: "none", preview: null, caption: "", sending: false, error: "camera unavailable — pick a photo instead", facing: "user" });
+      }
+    } else if (mode === "roll") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        compressToDataUrl(file).then((preview) =>
+          setCapture({ mode: "roll", preview, caption: "", sending: false, error: null })
+        );
+      };
+      input.click();
+    } else {
+      setCapture({ mode: "none", preview: null, caption: "", sending: false, error: null });
+    }
+  };
+
+  const stopCamera = () => {
+    capture?.stream?.getTracks().forEach((t) => t.stop());
+  };
+
+  const flipCamera = () => {
+    const facing = capture?.facing === "user" ? "environment" : "user";
+    stopCamera();
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: facing }, audio: false })
+      .then((stream) => setCapture((c) => ({ ...c, stream, facing })))
+      .catch(() => setCapture((c) => ({ ...c, facing }))); // keep old stream if flip fails
+  };
+
+  const shoot = () => {
+    if (!capture?.stream) return;
+    const video = document.createElement("video");
+    video.srcObject = capture.stream;
+    video.playsInline = true;
+    video.onloadedmetadata = () => {
+      video.play();
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.min(1080, video.videoWidth);
+      canvas.height = Math.round(canvas.width * (video.videoHeight / video.videoWidth));
+      canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+      stopCamera();
+      setCapture((c) => ({ ...c, mode: "camera", stream: null, preview: canvas.toDataURL("image/jpeg", 0.82) }));
+    };
+  };
+
+  const sendCapture = async () => {
+    if (!capture?.preview && !capture?.caption.trim()) return;
+    setCapture((c) => ({ ...c, sending: true, error: null }));
+    try {
+      const fd = new FormData();
+      if (capture.preview) {
+        const blob = await (await fetch(capture.preview)).blob();
+        fd.append("file", blob, "instant.jpg");
+      }
+      if (capture.caption.trim()) fd.append("text", capture.caption.trim());
+      const r = await fetch(`${BASE}/instants/capture`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("adminToken")}` },
+        body: fd,
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Could not post");
+      upsert(data); // SSE may also echo it; upsert dedupes
+      setCapture(null);
+      setViewing(null);
+    } catch (err) {
+      setCapture((c) => ({ ...c, sending: false, error: err.message }));
+    }
+  };
+
   const neighbours = (inst) => {
     const idx = instants.findIndex((i) => i.id === inst.id);
     return {
@@ -329,7 +433,17 @@ export default function InstantsWidget() {
           <div className="px-4 py-3 flex items-center gap-2 shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
             <Sparkles className="w-4 h-4 text-zinc-400" />
             <p className="font-serif-display font-bold text-sm">instants</p>
-            <span className="font-body text-[10px] text-zinc-400 flex items-center gap-1 ml-auto">
+            {captureOn && isAdmin && (
+              <button
+                onClick={() => startCapture("camera")}
+                aria-label="capture an instant"
+                className="ml-auto w-7 h-7 rounded-full flex items-center justify-center text-zinc-300 active:scale-90 transition-transform"
+                style={{ backgroundColor: "rgba(255,255,255,0.10)" }}
+              >
+                <Camera className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <span className="font-body text-[10px] text-zinc-400 flex items-center gap-1" style={{ marginLeft: captureOn && isAdmin ? 8 : "auto" }}>
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               live
             </span>
@@ -358,7 +472,25 @@ export default function InstantsWidget() {
                       className="block w-full text-left group"
                       aria-label="open instant"
                     >
-                      <div className="relative rounded-3xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+                      {/* stacked squircle: tinted ghost cards behind, soft rotation */}
+                      <div className="relative">
+                        <div
+                          className="absolute inset-x-3 -bottom-1 h-6 rounded-[26px]"
+                          style={{ background: "rgba(255,255,255,0.05)", transform: "rotate(-1.6deg)" }}
+                          aria-hidden="true"
+                        />
+                        <div
+                          className="absolute inset-x-1.5 -bottom-0.5 h-6 rounded-[28px]"
+                          style={{ background: "rgba(255,255,255,0.09)", transform: "rotate(1.1deg)" }}
+                          aria-hidden="true"
+                        />
+                        <div
+                          className="relative overflow-hidden transition-transform group-active:scale-[0.985]"
+                          style={{
+                            borderRadius: "28px",
+                            border: "1px solid rgba(255,255,255,0.08)",
+                          }}
+                        >
                         {instant.image_url ? (
                           <img
                             src={instant.image_url}
@@ -381,6 +513,7 @@ export default function InstantsWidget() {
                             </p>
                           </div>
                         )}
+                        </div>
                       </div>
                       <div className="flex items-center justify-between mt-1.5 px-1">
                         <span className="text-[10px] text-zinc-500">
@@ -524,6 +657,129 @@ export default function InstantsWidget() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Capture screen — camera/roll/none, squircle preview, shutter (flag-gated) */}
+      <AnimatePresence>
+        {open && capture && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed bottom-20 right-5 z-40 w-[min(92vw,380px)] max-h-[78vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+            style={{ backgroundColor: "#0b0b0b", color: "#f4f4f5", border: "1px solid rgba(255,255,255,0.08)" }}
+          >
+            <div className="px-4 py-3 flex items-center gap-2 shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+              <button
+                onClick={() => { stopCamera(); setCapture(null); }}
+                className="text-zinc-400 hover:text-white"
+                aria-label="close capture"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <p className="text-xs text-zinc-400 font-body">new instant</p>
+            </div>
+
+            <div className="p-4 overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
+              {/* live camera or squircle preview */}
+              {capture.mode === "camera" && capture.stream ? (
+                <CameraLive stream={capture.stream} onShoot={shoot} />
+              ) : capture.preview ? (
+                <div className="relative">
+                  <img
+                    src={capture.preview}
+                    alt="instant preview"
+                    className="w-full aspect-[4/5] object-cover"
+                    style={{ borderRadius: "28% 28% 30% 30% / 26% 26% 30% 30%" }}
+                  />
+                </div>
+              ) : (
+                <div
+                  className="w-full aspect-[4/5] flex flex-col items-center justify-center gap-2 text-zinc-500"
+                  style={{ background: "linear-gradient(145deg, #1c1c1e, #2a2a2c)", borderRadius: "28% 28% 30% 30% / 26% 26% 30% 30%" }}
+                >
+                  <Sparkles className="w-6 h-6" />
+                  <p className="text-xs font-body text-center px-6">camera or roll, or just type below</p>
+                </div>
+              )}
+
+              {/* shutter + flip + gallery row (pre-shot) */}
+              {capture.mode === "camera" && capture.stream && (
+                <div className="flex items-center justify-center gap-6 mt-4">
+                  <button
+                    onClick={flipCamera}
+                    aria-label="flip camera"
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white"
+                    style={{ backgroundColor: "rgba(255,255,255,0.10)" }}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={shoot}
+                    aria-label="take the shot"
+                    className="relative w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                    style={{ backgroundColor: "#fafaf9" }}
+                  >
+                    <Circle className="w-12 h-12" style={{ color: "#0b0b0b", fill: "#0b0b0b" }} />
+                  </button>
+                  <button
+                    onClick={() => startCapture("roll")}
+                    aria-label="pick from gallery"
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white"
+                    style={{ backgroundColor: "rgba(255,255,255,0.10)" }}
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* caption + send */}
+              {!capture.stream && (
+                <div className="mt-4 flex gap-1.5">
+                  <input
+                    value={capture.caption}
+                    onChange={(e) => setCapture((c) => ({ ...c, caption: e.target.value }))}
+                    placeholder="say it in a few words (optional)"
+                    maxLength={280}
+                    className="flex-1 text-xs px-3 py-2.5 rounded-full bg-white/5 border outline-none focus:ring-1 text-white placeholder:text-zinc-600"
+                    style={{ borderColor: "rgba(255,255,255,0.12)" }}
+                  />
+                  <button
+                    onClick={sendCapture}
+                    disabled={capture.sending || (!capture.preview && !capture.caption.trim())}
+                    aria-label="post instant"
+                    className="px-3.5 rounded-full flex items-center justify-center disabled:opacity-30 active:scale-95 transition-transform"
+                    style={{ backgroundColor: "#fafaf9", color: "#0b0b0b" }}
+                  >
+                    {capture.sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  </button>
+                </div>
+              )}
+              {capture.error && <p className="text-[10px] text-red-400 mt-2 font-body">{capture.error}</p>}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
+  );
+}
+
+// Live camera preview in a squircle — the viewfinder.
+function CameraLive({ stream, onShoot }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current && stream) {
+      ref.current.srcObject = stream;
+      ref.current.play().catch(() => {});
+    }
+  }, [stream]);
+  return (
+    <video
+      ref={ref}
+      muted
+      playsInline
+      className="w-full aspect-[4/5] object-cover"
+      style={{ borderRadius: "28% 28% 30% 30% / 26% 26% 30% 30%", transform: "scaleX(-1)" }}
+    />
   );
 }

@@ -395,7 +395,10 @@ app.delete('/api/admin/hot-takes/:id', authenticateToken, async (req, res) => {
 //
 // Flip switches from the admin panel (Admin → Flags). No redeploy needed.
 
-const KNOWN_FLAGS = ['instants_widget', 'instants_gallery_film', 'instants_home_section', 'instants_reactions'];
+const KNOWN_FLAGS = ['instants_widget', 'instants_gallery_film', 'instants_home_section', 'instants_reactions', 'instants_capture'];
+
+// Shared expiry durations — used by admin POST/PUT and the capture endpoint.
+const DURATIONS = { '4h': 4 * 3600e3, '24h': 24 * 3600e3, '7d': 7 * 86400e3, never: null };
 
 async function getFlagStates() {
   const result = await db.execute('SELECT key, state FROM site_flags');
@@ -524,7 +527,6 @@ app.get('/api/admin/instants', authenticateToken, async (req, res) => {
 
 // Admin create — broadcasts instantly.
 // duration: '4h' | '24h' | '7d' | 'never' (default '24h', Instagram-style)
-const DURATIONS = { '4h': 4 * 3600e3, '24h': 24 * 3600e3, '7d': 7 * 86400e3, never: null };
 app.post('/api/admin/instants', authenticateToken, async (req, res) => {
   const { text, image_url, link_url, source, published, duration } = req.body;
   if (!text?.trim() && !image_url) {
@@ -592,6 +594,68 @@ app.delete('/api/admin/instants/:id/thoughts/:thoughtId', authenticateToken, asy
     await auditLog('DELETE', 'thought', req.params.thoughtId, req.params.id);
     broadcastInstants('thought:remove', { instantId: req.params.id, thoughtId: req.params.thoughtId });
     res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Moderation — list notes across all instants (newest first), joined with
+// instant context so the admin UI shows what each note sits on.
+app.get('/api/admin/notes', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.execute({
+      sql: `SELECT t.*, i.text AS instant_text, i.image_url AS instant_image
+            FROM instant_thoughts t
+            LEFT JOIN instants i ON i.id = t.instant_id
+            ORDER BY t.created_at DESC LIMIT 500`,
+    });
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Capture — camera-first posting straight from the public widget, same auth
+// shape as admin (the widget checks adminToken). Accepts a data URL (camera
+// frame or picked file compressed client-side) and stores via R2.
+app.post('/api/instants/capture', authenticateToken, upload.single('file'), async (req, res) => {
+  try {
+    const text = (req.body?.text || '').trim() || null;
+    const duration = req.body?.duration || '24h';
+    const ttl = DURATIONS[duration] !== undefined ? DURATIONS[duration] : DURATIONS['24h'];
+    let imageUrl = null;
+    if (req.file) {
+      if (req.file.size > 8 * 1024 * 1024) return res.status(400).json({ error: 'Image too large (8MB max)' });
+      if (!/^image\//.test(req.file.mimetype)) return res.status(400).json({ error: 'Only images' });
+      imageUrl = await uploadFile(`instants/${uuidv4()}`, req.file.buffer, req.file.mimetype);
+    }
+    if (!imageUrl && !text) return res.status(400).json({ error: 'Nothing to post' });
+    const id = uuidv4();
+    const expiresAt = ttl ? new Date(Date.now() + ttl).toISOString() : null;
+    await db.execute({
+      sql: 'INSERT INTO instants (id, text, image_url, link_url, source, published, expires_at) VALUES (?, ?, ?, NULL, ?, 1, ?)',
+      args: [id, text, imageUrl, 'capture', expiresAt],
+    });
+    const row = (await db.execute({ sql: 'SELECT * FROM instants WHERE id = ?', args: [id] })).rows[0];
+    await auditLog('CREATE', 'instant-capture', id, (text || 'photo').slice(0, 50));
+    broadcastInstants('instant:new', row);
+    res.json(row);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reaction rollup per instant — the creator reciprocity loop.
+app.get('/api/admin/reaction-summary', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.execute({
+      sql: 'SELECT instant_id, emoji, COUNT(*) as count FROM instant_reactions GROUP BY instant_id, emoji',
+    });
+    const out = {};
+    for (const r of result.rows) {
+      (out[r.instant_id] ||= []).push({ emoji: r.emoji, count: Number(r.count) });
+    }
+    res.json(out);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
