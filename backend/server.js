@@ -150,6 +150,57 @@ app.get('/api/articles/:slug', async (req, res) => {
   }
 });
 
+// Instants linked to an article — the reading experience pulls you into moments.
+// Matching rules, in priority order:
+//   1. explicit link: instant.link_url mentions the article slug
+//   2. keyword match: any of the article's tags (case-insensitive, >2 chars) or
+//      the slug words appear in the instant's text or link_url
+// Public default: published + unexpired only, capped at 12.
+app.get('/api/articles/:slug/instants', async (req, res) => {
+  try {
+    const artRes = await db.execute({
+      sql: 'SELECT slug, tags FROM articles WHERE slug = ? AND published = 1',
+      args: [req.params.slug],
+    });
+    const article = artRes.rows[0];
+    if (!article) return res.status(404).json({ error: 'Article not found' });
+
+    const result = await db.execute({
+      sql: `SELECT * FROM instants
+            WHERE published = 1
+              AND (expires_at IS NULL OR expires_at > ?)
+            ORDER BY created_at DESC, rowid DESC LIMIT 100`,
+      args: [new Date().toISOString()],
+    });
+
+    const slugLower = article.slug.toLowerCase();
+    let tags = [];
+    try {
+      const parsed = JSON.parse(article.tags || '[]');
+      if (Array.isArray(parsed)) tags = parsed.map((t) => String(t?.name || t).toLowerCase()).filter(Boolean);
+    } catch {
+      // tags stored as comma text — fall through with just the slug
+    }
+
+    // Score each instant: explicit link match outranks keyword matches.
+    const scored = [];
+    for (const row of result.rows) {
+      const link = (row.link_url || '').toLowerCase();
+      const text = (row.text || '').toLowerCase();
+      const linkedExplicitly = link.includes(slugLower);
+      const keywordHit = tags.some((t) => t.length > 2 && (text.includes(t) || link.includes(t))) ||
+        (slugLower.length > 3 && (text.includes(slugLower.replace(/-/g, ' ')) || text.includes(slugLower)));
+      if (linkedExplicitly || keywordHit) {
+        scored.push({ ...row, match_weight: linkedExplicitly ? 2 : 1 });
+      }
+    }
+    scored.sort((a, b) => b.match_weight - a.match_weight || (b.created_at || '').localeCompare(a.created_at || ''));
+    res.json(scored.slice(0, 12));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/gallery', async (req, res) => {
   try {
     const result = await db.execute('SELECT * FROM gallery ORDER BY date DESC');
@@ -395,7 +446,7 @@ app.delete('/api/admin/hot-takes/:id', authenticateToken, async (req, res) => {
 //
 // Flip switches from the admin panel (Admin → Flags). No redeploy needed.
 
-const KNOWN_FLAGS = ['instants_widget', 'instants_gallery_film', 'instants_home_section', 'instants_reactions', 'instants_capture'];
+const KNOWN_FLAGS = ['instants_widget', 'instants_gallery_film', 'instants_home_section', 'instants_reactions', 'instants_capture', 'instants_crosslink'];
 
 // Shared expiry durations — used by admin POST/PUT and the capture endpoint.
 const DURATIONS = { '4h': 4 * 3600e3, '24h': 24 * 3600e3, '7d': 7 * 86400e3, never: null };
@@ -1059,3 +1110,4 @@ cron.schedule('*/10 * * * *', async () => {
     log('error', 'Keep-alive ping failed', { error: error.message });
   }
 });
+ 

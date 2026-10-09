@@ -16,6 +16,18 @@ const FLAG_META = {
     label: "Instants homepage section",
     description: "The 'live instants' bento/snap-scroll section on the public homepage.",
   },
+  instants_reactions: {
+    label: "Instant reactions + notes",
+    description: "Anonymous emoji reactions and free-note threads on every instant.",
+  },
+  instants_capture: {
+    label: "Instant capture (camera)",
+    description: "The camera-first capture screen inside the instants widget (admin only).",
+  },
+  instants_crosslink: {
+    label: "Instants on article pages",
+    description: "A live strip under each article showing instants linked to that story.",
+  },
 };
 
 const STATES = ["off", "canary", "on"];

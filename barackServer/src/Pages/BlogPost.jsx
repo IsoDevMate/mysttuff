@@ -12,6 +12,8 @@ import CommentSection from "@/components/blog/CommentSection";
 import LikeButton from "@/components/blog/LikeButton";
 import ShareButtons from "@/components/blog/ShareButtons";
 import RelatedPosts from "@/components/blog/RelatedPosts";
+import InstantsStrip from "@/components/instants/InstantsStrip";
+import { useFlags, flagOn } from "@/lib/flags";
 
 const slugify = (text) =>
   String(text).toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").slice(0, 60);
@@ -68,6 +70,7 @@ export default function BlogPost() {
     [post]
   );
   const [activeId, setActiveId] = useState(null);
+  const { flags } = useFlags();
 
   // Heading ids + scroll-spy. Ids are assigned after EVERY commit by walking
   // the DOM in document order and matching each heading to its TOC entry —
@@ -348,6 +351,9 @@ export default function BlogPost() {
 
           {/* Related Posts */}
           <RelatedPosts currentPostId={post.id} category={post.category} />
+
+          {/* Moments from this story — live instants linked to this article (flagged) */}
+          {flagOn(flags, "instants_crosslink") && slug && <InstantsStrip />}
 
           {/* Comments */}
           <CommentSection postId={post.id} />
