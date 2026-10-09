@@ -28,6 +28,10 @@ const FLAG_META = {
     label: "Instants on article pages",
     description: "A live strip under each article showing instants linked to that story.",
   },
+  admin_playground: {
+    label: "Creative playground home",
+    description: "Studio-style admin home: \u201cwhat are we making?\u201d command box, loose ends, recent captures. Off = classic dashboard.",
+  },
 };
 
 const STATES = ["off", "canary", "on"];

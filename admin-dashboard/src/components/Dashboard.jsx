@@ -6,12 +6,25 @@ import { Button } from './ui/button';
 import { Users, FileText, BarChart3, Upload, Plus, Edit, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import toast from 'react-hot-toast';
+import PlaygroundStudio from './PlaygroundStudio';
 
 function Dashboard() {
     const navigate = useNavigate();
     const [articles, setArticles] = useState([]);
     const [gallery, setGallery] = useState([]);
     const [loading, setLoading] = useState(true);
+    // The admin dashboard reads its own flags: admin token is already required
+    // for anything here, so canary resolves to "on" for every dashboard viewer.
+    const [playground, setPlayground] = useState(null); // null = deciding
+
+    useEffect(() => {
+        api.getFlags()
+            .then((flags) => {
+                const row = (flags || []).find((f) => f.key === 'admin_playground');
+                setPlayground(row?.state === 'canary' || row?.state === 'on');
+            })
+            .catch(() => setPlayground(false)); // fail-closed to the classic board
+    }, []);
 
     useEffect(() => {
         loadData();
@@ -50,7 +63,10 @@ function Dashboard() {
         { title: "Gallery Items", value: gallery.length, icon: Upload }
     ];
 
-    if (loading) return <div className="p-6">Loading...</div>;
+    // Creative playground (flag-gated): the studio home replaces the stats wall.
+    if (playground) return <PlaygroundStudio />;
+    // flag still resolving → show nothing yet to avoid the stats wall flash
+    if (playground === null) return null;
 
     return (
         <div className="space-y-6">

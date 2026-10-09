@@ -446,7 +446,7 @@ app.delete('/api/admin/hot-takes/:id', authenticateToken, async (req, res) => {
 //
 // Flip switches from the admin panel (Admin → Flags). No redeploy needed.
 
-const KNOWN_FLAGS = ['instants_widget', 'instants_gallery_film', 'instants_home_section', 'instants_reactions', 'instants_capture', 'instants_crosslink'];
+const KNOWN_FLAGS = ['instants_widget', 'instants_gallery_film', 'instants_home_section', 'instants_reactions', 'instants_capture', 'instants_crosslink', 'admin_playground'];
 
 // Shared expiry durations — used by admin POST/PUT and the capture endpoint.
 const DURATIONS = { '4h': 4 * 3600e3, '24h': 24 * 3600e3, '7d': 7 * 86400e3, never: null };
