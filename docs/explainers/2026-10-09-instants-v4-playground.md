@@ -172,3 +172,68 @@ during render` — a real bug class this codebase hit; check for it in any
 - Playful extras (canvas collage mode, headline lab, contextual action
   bubbles) were scoped but not built — the studio foundation needed to exist
   first. They're natural slices on this base.
+
+## 6. Collage reshuffle — try layouts before you commit one
+
+*(added after first ship; commits `2b9d837`)*
+
+The canvas already answered "how do I arrange these?" (drag, nudge). The
+reshuffle answers the harder question: *"what other arrangements are there
+that I haven't thought to try?"* It is a preview-first loop, not another
+reorder control.
+
+**The interaction:**
+
+- "try layouts" (meta row, only with ≥2 tiles and no uploads in flight)
+  opens a preview overlay that shows the *whole canvas* reordered under the
+  first preset — the committed tiles are untouched while you look.
+- The overlay header carries a tiny `before → after` index map
+  (`[0 1 2 3 4] → [3 2 1 0]`) so the shape change is legible without
+  mentally simulating three permutations.
+- Each preview tile labels itself: "stays here", "was #4", or on position 0,
+  "would be cover" — because in this data model position 0 *is* the cover,
+  for reshuffles exactly as for drags.
+- "next layout" cycles three deterministic presets — flipped (reverse),
+  stride (evens forward / odds reversed), midpoint (back half interleaved
+  into the front) — chosen so every preset produces a genuinely distinct
+  order for n ≥ 4 (verified in the suite: `[3 2 1 0]`, `[0 3 2 1]`,
+  `[0 3 1 2]` for n=4). Deterministic beats random: the same photos always
+  produce the same three candidates, so "no, go back to the first one" is
+  possible.
+- "use this layout" writes the picked permutation into the ordinary `tiles`
+  state — adoption exits the preview into the exact save flow a drag would
+  have used. "keep original" (or Escape — which closes only the preview,
+  not the canvas) restores the snapshot.
+
+**The snapshot rule (the one real bug this feature could have shipped with):**
+
+The original order is snapshotted the *first* time you open the preview in a
+stretch, and any manual edit (drag, nudge, remove) clears the snapshot. Why
+not snapshot on every open? Because adopt-then-reopen would otherwise make
+"keep original" mean "keep the last thing you adopted", and "reset" would
+become unreachable — you'd have to manually undo your own adopt step by step.
+With the re-baseline rule, adopt → reopen → keep original is a genuine undo
+of the whole reshuffle stretch, and tile removal invalidates the snapshot
+(any restore would resurrect a deleted tile's URL).
+
+**Verify:** `.freebuff/verify-shuffle.mjs` — 17 checks: preview opens, ≥3
+distinct layouts, Escape closes only the preview (canvas keeps its own Escape
+confirm — the two handlers mutually defer via `reshuffleOrder` in the dep
+array), adopt changes the cover match, reset restores the pre-shuffle order,
+publish persists the adopted order server-side with cover = `media[0]`.
+Canvas (15) and playground (9) regressions re-run clean.
+
+**Quiz the reshuffle:**
+
+9. Preview shows `midpoint`, you adopt, reopen the preview, then press
+   "keep original". Where do the tiles land? *(Back at the order from before
+   the whole reshuffle stretch — the snapshot was taken on first open and
+   adopt did not re-baseline it.)*
+10. You remove a tile mid-shuffle, then "keep original". What happens and
+    why? *(The snapshot was cleared by the remove — restore would otherwise
+    resurrect a deleted tile's URL, so no restore is offered.*
+11. Escape while the preview is open does what, and why is that different
+    from Escape with no preview open? *(The preview's handler closes only
+    the overlay; the canvas handler checks `reshuffleOrder` and defers —
+    closing the whole canvas from inside a preview you were merely looking
+    at would be a data-loss trap.)*
