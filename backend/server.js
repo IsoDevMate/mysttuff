@@ -174,12 +174,15 @@ app.get('/api/articles/:slug/instants', async (req, res) => {
     });
 
     const slugLower = article.slug.toLowerCase();
+    // tags are stored either as JSON (array of strings/objects) or plain
+    // comma text — accept both shapes.
     let tags = [];
+    const rawTags = article.tags || '';
     try {
-      const parsed = JSON.parse(article.tags || '[]');
+      const parsed = JSON.parse(rawTags);
       if (Array.isArray(parsed)) tags = parsed.map((t) => String(t?.name || t).toLowerCase()).filter(Boolean);
     } catch {
-      // tags stored as comma text — fall through with just the slug
+      tags = rawTags.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
     }
 
     // Score each instant: explicit link match outranks keyword matches.
@@ -446,7 +449,7 @@ app.delete('/api/admin/hot-takes/:id', authenticateToken, async (req, res) => {
 //
 // Flip switches from the admin panel (Admin → Flags). No redeploy needed.
 
-const KNOWN_FLAGS = ['instants_widget', 'instants_gallery_film', 'instants_home_section', 'instants_reactions', 'instants_capture', 'instants_crosslink', 'admin_playground'];
+const KNOWN_FLAGS = ['instants_widget', 'instants_gallery_film', 'instants_home_section', 'instants_reactions', 'instants_capture', 'instants_crosslink', 'admin_playground', 'instants_pure'];
 
 // Shared expiry durations — used by admin POST/PUT and the capture endpoint.
 const DURATIONS = { '4h': 4 * 3600e3, '24h': 24 * 3600e3, '7d': 7 * 86400e3, never: null };
@@ -667,11 +670,18 @@ app.get('/api/admin/notes', authenticateToken, async (req, res) => {
 });
 
 // Capture — camera-first posting straight from the public widget, same auth
-// shape as admin (the widget checks adminToken). Accepts a data URL (camera
-// frame or picked file compressed client-side) and stores via R2.
+// shape as admin (the widget checks adminToken). Pure-mode frames come from
+// the live camera; classic mode can also compress a picked image. Both use R2.
 app.post('/api/instants/capture', authenticateToken, upload.single('file'), async (req, res) => {
   try {
-    const text = (req.body?.text || '').trim() || null;
+    // capture is admin-authenticated end to end, so canary counts as pure
+    // here (the widget applies the same canary-for-admin rule client-side).
+    const pureState = (await getFlagStates()).instants_pure;
+    const pure = pureState === 'on' || pureState === 'canary';
+    const text = pure ? null : ((req.body?.text || '').trim() || null);
+    if (pure && (!req.file || req.body?.capture_method !== 'camera')) {
+      return res.status(400).json({ error: 'Pure instants require a photo captured just now with the camera' });
+    }
     const duration = req.body?.duration || '24h';
     const ttl = DURATIONS[duration] !== undefined ? DURATIONS[duration] : DURATIONS['24h'];
     let imageUrl = null;
@@ -727,6 +737,9 @@ function noteRateOk(visitorId) {
 
 app.get('/api/instants/:id/thoughts', async (req, res) => {
   try {
+    if ((await getFlagStates()).instants_pure === 'on') {
+      return res.status(410).json({ error: 'Notes are disabled for pure instants' });
+    }
     const result = await db.execute({
       sql: 'SELECT * FROM instant_thoughts WHERE instant_id = ? ORDER BY created_at ASC',
       args: [req.params.id],
@@ -739,6 +752,9 @@ app.get('/api/instants/:id/thoughts', async (req, res) => {
 });
 
 app.post('/api/instants/:id/thoughts', async (req, res) => {
+  if ((await getFlagStates()).instants_pure === 'on') {
+    return res.status(410).json({ error: 'Notes are disabled for pure instants' });
+  }
   const { body, visitor_id } = req.body;
   if (!body?.trim()) {
     return res.status(400).json({ error: 'Write something first' });

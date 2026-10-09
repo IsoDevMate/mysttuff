@@ -32,6 +32,10 @@ const FLAG_META = {
     label: "Creative playground home",
     description: "Studio-style admin home: \u201cwhat are we making?\u201d command box, loose ends, recent captures. Off = classic dashboard.",
   },
+  instants_pure: {
+    label: "Instants pure mode",
+    description: "Photo → share → view → expire. No notes, no caption during capture; reactions stay on.",
+  },
 };
 
 const STATES = ["off", "canary", "on"];

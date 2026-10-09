@@ -129,6 +129,7 @@ if (process.env.TURSO_AUTH_TOKEN) {
     ['instants_capture', 'canary'],
     ['instants_crosslink', 'canary'],
     ['admin_playground', 'canary'],
+    ['instants_pure', 'canary'],
   ];
   for (const [key, state] of defaultFlags) {
     try {

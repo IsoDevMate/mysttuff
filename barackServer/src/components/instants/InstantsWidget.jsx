@@ -57,14 +57,16 @@ function expiresLabel(iso) {
 /**
  * Instants — IG-instants-style floating widget.
  *
- * Feed opens as a dark card (Instagram-instants look): big rounded media,
- * emoji reaction row that toggles on tap, and free-form notes
- * (no name, no email — moderation is admin-side). Realtime over SSE.
+ * Feed opens as a dark card: big rounded media, emoji reactions, and
+ * (outside pure mode) free-form notes. Realtime over SSE.
  */
 export default function InstantsWidget() {
   const { flags } = useFlags();
   const reactionsOn = flagOn(flags, "instants_reactions");
   const captureOn = flagOn(flags, "instants_capture");
+  // pure mode: an instant is just a photo. Capture loses its caption field
+  // and the viewer loses the notes thread; reactions stay on.
+  const pureOn = flagOn(flags, "instants_pure");
 
   const [open, setOpen] = useState(false);
   const [capture, setCapture] = useState(null); // null | {mode:'camera'|'roll'|'none', preview, caption, sending, error, facing}
@@ -182,27 +184,18 @@ export default function InstantsWidget() {
     return () => es.close();
   }, []);
 
-  const loadThoughts = useCallback(async (instantId) => {
-    try {
-      const r = await fetch(`${BASE}/instants/${instantId}/thoughts`);
-      setThoughts(r.ok ? await r.json() : []);
-    } catch {
-      setThoughts([]);
-    }
-  }, []);
-
   const openThoughts = (instant) => {
     setViewing(instant);
     setNoteMsg(null);
     markSeen(instant.id);
-    loadThoughts(instant.id);
+    if (!pureOn) loadThoughts(instant.id); // notes UI is off in pure mode
   };
 
   // Auto-advance: stories-style, 6s per instant, pause while typing a note.
   useEffect(() => {
     if (!viewing) return;
     if (seen.has(viewing.id)) return; // already-viewed → no auto-advance, browse freely
-    if (noteDraft) return; // typing → hold
+    if (!pureOn && noteDraft) return; // typing → hold (pure mode has no note field)
     const t = setTimeout(() => {
       const { next } = neighbours(viewing);
       if (next) {
@@ -211,7 +204,7 @@ export default function InstantsWidget() {
       }
     }, 6000);
     return () => clearTimeout(t);
-  }, [viewing, seen, noteDraft]);
+  }, [viewing, seen, noteDraft, pureOn]);
 
   // Keyboard: ←/→ step, Esc closes (desktop feel)
   useEffect(() => {
@@ -229,6 +222,16 @@ export default function InstantsWidget() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [viewing]);
+
+  const loadThoughts = useCallback(async (instantId) => {
+    if (pureOn) return; // notes UI is off in pure mode
+    try {
+      const r = await fetch(`${BASE}/instants/${instantId}/thoughts`);
+      setThoughts(r.ok ? await r.json() : []);
+    } catch {
+      setThoughts([]);
+    }
+  }, [pureOn]);
 
   const react = async (instant, emoji) => {
     // serialize rapid toggles against slow networks: ignore clicks while this
@@ -324,9 +327,18 @@ export default function InstantsWidget() {
         });
         setCapture({ mode: "camera", stream, preview: null, caption: "", sending: false, error: null, facing: capture?.facing || "user" });
       } catch {
-        setCapture({ mode: "none", preview: null, caption: "", sending: false, error: "camera unavailable — pick a photo instead", facing: "user" });
+        setCapture({
+          mode: "none",
+          preview: null,
+          caption: "",
+          sending: false,
+          // pure mode = camera-only, so no pick-a-file escape hatch
+          error: pureOn ? "Camera unavailable. This moment was not captured." : "Camera unavailable. Pick a photo instead.",
+          facing: "user",
+        });
       }
     } else if (mode === "roll") {
+      if (pureOn) return; // pure = the camera now, never a picked file
       const input = document.createElement("input");
       input.type = "file";
       input.accept = "image/*";
@@ -373,7 +385,7 @@ export default function InstantsWidget() {
   };
 
   const sendCapture = async () => {
-    if (!capture?.preview && !capture?.caption.trim()) return;
+    if (pureOn ? !capture?.preview : (!capture?.preview && !capture?.caption.trim())) return; // pure = photo required
     setCapture((c) => ({ ...c, sending: true, error: null }));
     try {
       const fd = new FormData();
@@ -381,6 +393,7 @@ export default function InstantsWidget() {
         const blob = await (await fetch(capture.preview)).blob();
         fd.append("file", blob, "instant.jpg");
       }
+      if (pureOn) fd.append("capture_method", "camera");
       if (capture.caption.trim()) fd.append("text", capture.caption.trim());
       const r = await fetch(`${BASE}/instants/capture`, {
         method: "POST",
@@ -420,7 +433,7 @@ export default function InstantsWidget() {
               }}
               aria-label={`react ${emoji}`}
               className={`flex items-center gap-1 rounded-full font-body transition-all active:scale-90 ${
-                large ? "px-2.5 py-1 text-sm" : "px-1.5 py-0.5 text-[11px]"
+                large ? "min-h-11 px-2.5 py-2 text-sm" : "px-1.5 py-0.5 text-[11px]"
               } ${isMine ? "font-semibold" : ""}`}
               style={{
                 backgroundColor: isMine
@@ -481,7 +494,7 @@ export default function InstantsWidget() {
               <button
                 onClick={() => startCapture("camera")}
                 aria-label="capture an instant"
-                className="ml-auto w-7 h-7 rounded-full flex items-center justify-center text-zinc-300 active:scale-90 transition-transform"
+                className="ml-auto w-11 h-11 rounded-full flex items-center justify-center text-zinc-300 active:scale-90 transition-transform"
                 style={{ backgroundColor: "rgba(255,255,255,0.10)" }}
               >
                 <Camera className="w-3.5 h-3.5" />
@@ -576,7 +589,11 @@ export default function InstantsWidget() {
                           )}
                         </span>
                         <span className="text-[10px] text-zinc-500 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <MessageCircle className="w-3 h-3" /> notes & reactions
+                          {!pureOn && (
+                            <>
+                              <MessageCircle className="w-3 h-3" /> notes & reactions
+                            </>
+                          )}
                         </span>
                       </div>
                     </button>
@@ -734,7 +751,8 @@ export default function InstantsWidget() {
                 )}
               </div>
 
-              {/* notes thread — bottom sheet scroll */}
+              {/* notes thread — bottom sheet scroll (hidden entirely in pure mode) */}
+              {!pureOn && (
               <div className="overflow-y-auto px-4 py-3 min-h-[70px]" style={{ scrollbarWidth: "thin" }}>
                 <p className="text-[11px] uppercase tracking-wide text-zinc-500 mb-2 font-body">notes</p>
                 <div className="space-y-2 mb-3">
@@ -774,6 +792,7 @@ export default function InstantsWidget() {
                   </p>
                 )}
               </div>
+              )}
             </motion.div>
           </motion.div>
         )}
@@ -793,7 +812,7 @@ export default function InstantsWidget() {
             <div className="px-4 py-3 flex items-center gap-2 shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
               <button
                 onClick={() => { stopCamera(); setCapture(null); }}
-                className="text-zinc-400 hover:text-white"
+                className="w-11 h-11 rounded-full flex items-center justify-center text-zinc-400 hover:text-white"
                 aria-label="close capture"
               >
                 <X className="w-5 h-5" />
@@ -820,7 +839,7 @@ export default function InstantsWidget() {
                   style={{ background: "linear-gradient(145deg, #1c1c1e, #2a2a2c)", borderRadius: "28% 28% 30% 30% / 26% 26% 30% 30%" }}
                 >
                   <Sparkles className="w-6 h-6" />
-                  <p className="text-xs font-body text-center px-6">camera or roll, or just type below</p>
+                  <p className="text-xs font-body text-center px-6">{pureOn ? "a moment, as it happens" : "camera or roll, or just type below"}</p>
                 </div>
               )}
 
@@ -830,7 +849,7 @@ export default function InstantsWidget() {
                   <button
                     onClick={flipCamera}
                     aria-label="flip camera"
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white"
+                    className="w-11 h-11 rounded-full flex items-center justify-center text-white"
                     style={{ backgroundColor: "rgba(255,255,255,0.10)" }}
                   >
                     <RefreshCw className="w-4 h-4" />
@@ -843,19 +862,59 @@ export default function InstantsWidget() {
                   >
                     <Circle className="w-12 h-12" style={{ color: "#0b0b0b", fill: "#0b0b0b" }} />
                   </button>
-                  <button
-                    onClick={() => startCapture("roll")}
-                    aria-label="pick from gallery"
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white"
-                    style={{ backgroundColor: "rgba(255,255,255,0.10)" }}
-                  >
-                    <ImageIcon className="w-4 h-4" />
-                  </button>
+                  {!pureOn && (
+                    <button
+                      onClick={() => startCapture("roll")}
+                      aria-label="pick from gallery"
+                      className="w-11 h-11 rounded-full flex items-center justify-center text-white"
+                      style={{ backgroundColor: "rgba(255,255,255,0.10)" }}
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               )}
 
-              {/* caption + send */}
-              {!capture.stream && (
+              {/* pure mode: photo → share, that's the whole form */}
+              {pureOn && !capture.stream && capture.preview && (
+                <div className="mt-4 flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => startCapture("camera")}
+                    className="min-h-11 text-xs text-zinc-400 hover:text-white px-3 py-3.5"
+                  >
+                    retake
+                  </button>
+                  <button
+                    onClick={sendCapture}
+                    disabled={capture.sending}
+                    aria-label="share instant"
+                    className="min-h-11 flex items-center gap-1.5 text-xs px-4 py-3 rounded-full font-medium disabled:opacity-30 active:scale-95 transition-transform"
+                    style={{ backgroundColor: "#fafaf9", color: "#0b0b0b" }}
+                  >
+                    {capture.sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    share
+                  </button>
+                </div>
+              )}
+              {pureOn && !capture.preview && !capture.stream && (
+                <div className="mt-4">
+                  {/* pure = the camera at this moment. No roll-picking, no retake
+                      from library: the photo is what the lens sees now. */}
+                  <button
+                    onClick={() => startCapture("camera")}
+                    className="w-full min-h-11 text-xs py-3 rounded-full text-zinc-300 active:scale-95 transition-transform"
+                    style={{ backgroundColor: "rgba(255,255,255,0.08)" }}
+                  >
+                    start camera
+                  </button>
+                  {capture.error && (
+                    <p className="text-[10px] text-red-400 mt-2 font-body text-center">{capture.error}</p>
+                  )}
+                </div>
+              )}
+
+              {/* caption + send (classic mode only — pure is photo-only) */}
+              {!capture.stream && !pureOn && (
                 <div className="mt-4 flex gap-1.5">
                   <input
                     value={capture.caption}
@@ -876,7 +935,7 @@ export default function InstantsWidget() {
                   </button>
                 </div>
               )}
-              {capture.error && <p className="text-[10px] text-red-400 mt-2 font-body">{capture.error}</p>}
+              {capture.error && !pureOn && <p className="text-[10px] text-red-400 mt-2 font-body">{capture.error}</p>}
             </div>
           </motion.div>
         )}
