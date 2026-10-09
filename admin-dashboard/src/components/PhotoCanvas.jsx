@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, X, Check, Loader2, Heading1, Sparkles, RotateCcw, Film } from 'lucide-react';
+import { Upload, X, Check, Loader2, Heading1, Sparkles, RotateCcw, Film, Shuffle } from 'lucide-react';
 import { api } from '../api';
 import toast from 'react-hot-toast';
 
@@ -18,6 +18,50 @@ import toast from 'react-hot-toast';
  */
 
 const IMAGES_ACCEPT = { 'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.webp'] };
+
+// Reshuffle arrangements: reorder the same photos into a new collage shape.
+// Each preset is a plain reorder function — no spans, no row spans, so the
+// adopt path feeds straight into the same tiles/save flow as drag reorder.
+// 0 = "flipped" (reverse), 1 = "stride" (every n-th pick), 2 = "midpoint"
+// (back-half interleaved into front-half) — three genuinely different shapes.
+const RESHUFFLE_PRESETS = [
+    { key: 'flipped', label: 'flipped', apply: (n) => [...Array(n).keys()].reverse() },
+    {
+        key: 'stride',
+        label: 'stride',
+        apply: (n) => {
+            const ceil = Math.ceil(n / 2);
+            const even = [...Array(Math.ceil(n / 2)).keys()].map((k) => k * 2);
+            const odd = [...Array(Math.floor(n / 2)).keys()].map((k) => k * 2 + 1).reverse();
+            return interleavedFwd(even, odd, n);
+        },
+    },
+    {
+        key: 'midpoint',
+        label: 'midpoint',
+        apply: (n) => {
+            const mid = Math.floor(n / 2);
+            const front = [...Array(mid).keys()];
+            const back = [...Array(n - mid).keys()].map((k) => mid + k).reverse();
+            const out = [];
+            for (let k = 0; k < n; k++) {
+                if (k < front.length) out.push(front[k]);
+                if (k < back.length) out.push(back[k]);
+            }
+            return out.filter((i) => i >= 0 && i < n);
+        },
+    },
+];
+
+function interleavedFwd(even, odd, n) {
+    const out = [];
+    const max = Math.max(even.length, odd.length);
+    for (let k = 0; k < max; k++) {
+        if (k < even.length) out.push(even[k]);
+        if (k < odd.length) out.push(odd[k]);
+    }
+    return out.filter((i) => i < n);
+}
 
 function useReducedMotionPref() {
     const [reduce, setReduce] = useState(false);
@@ -66,15 +110,23 @@ function PhotoCanvas({ item, onClose, onSaved }) {
     const [dragOverIndex, setDragOverIndex] = useState(null);
     const dragIndex = useRef(null);
 
+    // Reshuffle state: which preset is previewing, and a snapshot of the order
+    // you started from (a labeled name is enough — the reset target is the
+    // tiles array itself, kept in a ref so an adopt → cancel round-trip is
+    // always possible).
+    const [shuffleIndex, setShuffleIndex] = useState(0);
+    const [reshuffleOrder, setReshuffleOrder] = useState(null); // null = off
+    const tilesAtShuffleStart = useRef(null);
+
     useEffect(() => {
         const onKey = (e) => {
-            if (e.key === 'Escape' && !uploadingCount && !saving) {
+            if (e.key === 'Escape' && !reshuffleOrder && !uploadingCount && !saving) {
                 confirm('Leave the canvas? Unsaved arrangement is not kept.') && onClose(false);
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [onClose, uploadingCount, saving]);
+    }, [onClose, uploadingCount, saving, reshuffleOrder]);
 
     useEffect(() => {
         document.body.style.overflow = 'hidden';
@@ -122,6 +174,7 @@ function PhotoCanvas({ item, onClose, onSaved }) {
         dragIndex.current = null;
         setDragOverIndex(null);
         if (from === null || from === index) return;
+        tilesAtShuffleStart.current = null; // manual edit = new baseline
         setTiles((prev) => {
             const next = [...prev];
             const [moved] = next.splice(from, 1);
@@ -133,13 +186,64 @@ function PhotoCanvas({ item, onClose, onSaved }) {
     const nudgeTile = (index, dir) => {
         const target = index + dir;
         if (target < 0 || target >= tiles.length) return;
+        tilesAtShuffleStart.current = null; // manual edit = new baseline
         setTiles((prev) => {
             const next = [...prev];
             [next[index], next[target]] = [next[target], next[index]];
             return next;
         });
     };
-    const removeTile = (index) => setTiles((prev) => prev.filter((_, i) => i !== index));
+    const removeTile = (index) => {
+        tilesAtShuffleStart.current = null; // tile set changed — no stale restore
+        setTiles((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    // Reshuffle: open preview on the CURRENT committed order. Snapshot the old
+    // one; the preview state (reshuffleOrder) is separate from the committed
+    // tiles, so "adopt" writes it into tiles and "reset" restores from ref.
+    const openReshuffle = () => {
+        if (tiles.length < 2) return;
+        // Snapshot only the first reshuffle of this stretch of edits — a manual
+        // reorder (below) clears it, and reset puts you back to the clean
+        // pre-shuffle order, not "whatever the last adopt moved around".
+        if (!tilesAtShuffleStart.current) {
+            tilesAtShuffleStart.current = tiles.map((t) => t.url);
+        }
+        setShuffleIndex(0);
+        setReshuffleOrder(RESHUFFLE_PRESETS[0].apply(tiles.length));
+    };
+    const cycleReshuffle = () => {
+        const next = (shuffleIndex + 1) % RESHUFFLE_PRESETS.length;
+        setShuffleIndex(next);
+        setReshuffleOrder(RESHUFFLE_PRESETS[next].apply(tiles.length));
+    };
+    const adoptReshuffle = () => {
+        setTiles((prev) => reshuffleOrder.map((i) => prev[i]));
+        setReshuffleOrder(null);
+    };
+    const resetReshuffle = () => {
+        const original = tilesAtShuffleStart.current;
+        if (original) {
+            setTiles((prev) => {
+                const byUrl = new Map(prev.map((t) => [t.url, t]));
+                return original.map((u) => byUrl.get(u)).filter(Boolean);
+            });
+        }
+        tilesAtShuffleStart.current = null;
+        setReshuffleOrder(null);
+    };
+    // Escape inside the preview closes ONLY the preview — the canvas itself
+    // keeps its own Escape/discard flow (that handler checks reshuffleOrder).
+    useEffect(() => {
+        if (!reshuffleOrder) return;
+        const onKey = (e) => {
+            if (e.key === 'Escape') {
+                resetReshuffle();
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [reshuffleOrder]);
 
     const save = async () => {
         if (!title.trim()) {
@@ -251,6 +355,14 @@ function PhotoCanvas({ item, onClose, onSaved }) {
                         <RotateCcw className="w-3 h-3" /> original is safe — only "save" writes
                     </span>
                 )}
+                <button
+                    onClick={openReshuffle}
+                    disabled={tiles.length < 2 || uploadingCount > 0 || reshuffleOrder !== null}
+                    title="Preview other arrangements of these photos"
+                    className="ml-auto flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:border-white/40 disabled:opacity-30 disabled:hover:border-white/15 disabled:hover:text-white/70 transition-colors"
+                >
+                    <Shuffle className="w-3.5 h-3.5" /> try layouts
+                </button>
             </div>
 
             {/* ── canvas ── */}
@@ -358,6 +470,91 @@ function PhotoCanvas({ item, onClose, onSaved }) {
                     </p>
                 )}
             </div>
+
+            {/* ── reshuffle preview (temporary overlay, only while comparing) ── */}
+            {reshuffleOrder && (() => {
+                const preset = RESHUFFLE_PRESETS[shuffleIndex];
+                const changed = reshuffleOrder.some((i, k) => i !== k);
+                return (
+                    <motion.div
+                        initial={reduceMotion ? false : { opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="fixed inset-0 z-[120] flex flex-col"
+                        style={{ backgroundColor: 'rgba(8,8,8,0.96)' }}
+                        role="dialog"
+                        aria-label="Reshuffle preview"
+                    >
+                        <div className="flex items-center gap-3 px-5 py-3.5 border-b border-white/10 text-white">
+                            <Shuffle className="w-4 h-4 text-white/50" />
+                            <p className="text-sm font-medium">try layouts — “{preset.label}”</p>
+                            {/* tiny before → after map, so the shape change is legible without mental math */}
+                            <span className="font-mono text-[10px] text-white/40 hidden sm:inline">
+                                [{tiles.map((_, i) => i).join(' ')}] → [{reshuffleOrder.join(' ')}]
+                            </span>
+                            <div className="ml-auto flex items-center gap-2">
+                                <button
+                                    onClick={cycleReshuffle}
+                                    className="text-xs px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:border-white/40 transition-colors"
+                                >
+                                    next layout
+                                </button>                                <button
+                                    onClick={resetReshuffle}
+                                    className="text-xs px-3 py-1.5 rounded-full text-white/70 hover:text-white"
+                                >
+                                    keep original
+                                </button>
+                            </div>
+                        </div>
+                    <div className="flex-1 overflow-y-auto px-5 py-4">
+                        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+                            {reshuffleOrder.map((oldIndex, pos) => {
+                                const tile = tiles[oldIndex];
+                                return (
+                                    <motion.div
+                                        key={tile.url}
+                                        layout={reduceMotion ? undefined : true}
+                                        initial={reduceMotion ? false : { opacity: 0, scale: 0.95 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        transition={{ duration: 0.2 }}
+                                        className="relative rounded-2xl overflow-hidden border border-white/10"
+                                        style={{ aspectRatio: '4/5' }}
+                                    >
+                                        <img src={tile.url} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+                                        <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded-full text-[9px] text-white/80 bg-black/50">
+                                            {oldIndex === pos ? "stays here" : `was #${oldIndex + 1}`}
+                                        </span>
+                                        {pos === 0 && (
+                                            <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-medium bg-white text-black">
+                                                would be cover
+                                            </span>
+                                        )}
+                                    </motion.div>
+                                );
+                            })}
+                        </div>
+                        <p className="text-center text-white/40 text-xs mt-6 font-body">
+                            {changed ? 'adopt this layout to rearrange the canvas — nothing saves yet' : 'this layout matches the current order'}
+                        </p>
+                    </div>
+                    <div className="flex items-center justify-center gap-3 px-5 py-4 border-t border-white/10">
+                        <button
+                            onClick={cycleReshuffle}
+                            className="text-sm px-5 py-2 rounded-full border border-white/20 text-white hover:border-white/50 transition-colors"
+                        >
+                            next layout
+                        </button>
+                        <button
+                            onClick={adoptReshuffle}
+                            disabled={!changed}
+                            className="text-sm px-5 py-2 rounded-full font-medium bg-white text-black disabled:opacity-30 active:scale-95 transition-transform"
+                        >
+                            use this layout
+                        </button>
+                    </div>
+                </motion.div>
+            )})()}
 
             {/* ── honest footer ── */}
             <div className="px-5 py-2.5 border-t border-white/10 text-[10px] text-white/30 font-body flex items-center gap-3">
