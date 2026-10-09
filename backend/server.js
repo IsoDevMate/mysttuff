@@ -385,6 +385,72 @@ app.delete('/api/admin/hot-takes/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── Feature Flags (staged rollout switches) ────────────────────────────────
+//
+// Every optional feature on the public site is gated by a row in site_flags.
+// Three states:
+//   off    → hidden from everyone
+//   canary → visible to the admin only (plus visitors using ?new-ui=1)
+//   on     → visible to everyone
+//
+// Flip switches from the admin panel (Admin → Flags). No redeploy needed.
+
+const KNOWN_FLAGS = ['instants_widget', 'instants_gallery_film', 'instants_home_section'];
+
+async function getFlagStates() {
+  const result = await db.execute('SELECT key, state FROM site_flags');
+  const states = {};
+  for (const row of result.rows) states[row.key] = row.state;
+  return states;
+}
+
+// Public — returns 'on' | 'canary' | 'off' per flag. 'canary' is not sensitive
+// (the admin panel itself decides who counts as the admin client-side via the
+// auth token; public visitors just see 'canary' and treat it as off, unless
+// they opt in with ?new-ui=1 — that's the "try the new version" preview).
+app.get('/api/flags', async (req, res) => {
+  try {
+    const states = await getFlagStates();
+    const out = {};
+    for (const key of KNOWN_FLAGS) out[key] = states[key] || 'off';
+    // no-store: a client must never see yesterday's rollout state from cache
+    res.set('Cache-Control', 'no-store');
+    res.json(out);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin — list flags
+app.get('/api/admin/flags', authenticateToken, async (req, res) => {
+  try {
+    const states = await getFlagStates();
+    res.set('Cache-Control', 'no-store');
+    res.json(KNOWN_FLAGS.map((key) => ({ key, state: states[key] || 'off' })));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin — update one flag
+app.put('/api/admin/flags/:key', authenticateToken, async (req, res) => {
+  const { key } = req.params;
+  const { state } = req.body;
+  if (!KNOWN_FLAGS.includes(key)) return res.status(404).json({ error: 'Unknown flag' });
+  if (!['off', 'canary', 'on'].includes(state)) return res.status(400).json({ error: 'state must be off | canary | on' });
+  try {
+    await db.execute({
+      sql: `INSERT INTO site_flags (key, state, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT (key) DO UPDATE SET state = excluded.state, updated_at = CURRENT_TIMESTAMP`,
+      args: [key, state],
+    });
+    await auditLog('UPDATE', 'flag', key, `${key} → ${state}`);
+    res.json({ key, state });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ─── Instants (Locket-style realtime captures) ─────────────────────────────
 
 // SSE clients — one entry per open connection

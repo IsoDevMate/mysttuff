@@ -148,6 +148,18 @@ class ApiClient {
     });
   }
 
+  // Feature flags
+  async getFlags() {
+    return this.request('/admin/flags');
+  }
+
+  async setFlag(key, state) {
+    return this.request(`/admin/flags/${key}`, {
+      method: 'PUT',
+      body: JSON.stringify({ state }),
+    });
+  }
+
   // Hot Takes
   async getHotTakes() {
     return this.request('/admin/hot-takes');

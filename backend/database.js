@@ -90,6 +90,11 @@ if (process.env.TURSO_AUTH_TOKEN) {
       approved INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS site_flags (
+      key TEXT PRIMARY KEY,
+      state TEXT NOT NULL DEFAULT 'off' CHECK (state IN ('off', 'canary', 'on')),
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
     `CREATE TABLE IF NOT EXISTS waitlist (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
@@ -106,6 +111,24 @@ if (process.env.TURSO_AUTH_TOKEN) {
     'ALTER TABLE gallery ADD COLUMN media TEXT',
     'ALTER TABLE instants ADD COLUMN expires_at DATETIME',
   ];
+
+  // Seed feature flags with the CURRENT live behavior (all on) so this
+  // migration is backward-compatible: nothing changes until you flip a switch.
+  const defaultFlags = [
+    ['instants_widget', 'on'],
+    ['instants_gallery_film', 'on'],
+    ['instants_home_section', 'on'],
+  ];
+  for (const [key, state] of defaultFlags) {
+    try {
+      await db.execute({
+        sql: 'INSERT INTO site_flags (key, state) VALUES (?, ?) ON CONFLICT (key) DO NOTHING',
+        args: [key, state],
+      });
+    } catch (e) {
+      console.error('Flag seed failed:', key, e.message);
+    }
+  }
   for (const sql of columnMigrations) {
     try {
       await db.execute(sql);

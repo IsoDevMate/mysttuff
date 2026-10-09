@@ -10,6 +10,7 @@ import ArticleList from './components/ArticleList';
 import Gallery from './components/Gallery';
 import HotTakes from './components/HotTakes';
 import Instants from './components/Instants';
+import Flags from './components/Flags';
 import Dashboard from './components/Dashboard';
 import Settings from './components/Settings';
 import Sidebar from './components/Sidebar';
@@ -100,6 +101,7 @@ function App() {
                 <Route path="/gallery" element={<Gallery />} />
                 <Route path="/hot-takes" element={<HotTakes />} />
                 <Route path="/instants" element={<Instants />} />
+                <Route path="/flags" element={<Flags />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/health" element={<SystemHealth />} />
                 <Route path="/audit-logs" element={<AuditLogs />} />

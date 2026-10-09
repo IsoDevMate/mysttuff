@@ -36,3 +36,10 @@ logs/
 *.sql
 *.pid
 *.sh
+
+# Personal AI-tool configs (do not share)
+.cursor/
+.windsurfrules
+.goosehints
+CLAUDE.md
+GEMINI.md

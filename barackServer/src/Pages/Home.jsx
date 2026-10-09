@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { format } from "date-fns";
 import InstantsLive from "@/components/instants/InstantsLive";
+import { useFlags, flagOn } from "@/lib/flags";
 
 export default function Home() {
   const { data: allPosts = [] } = useQuery({
@@ -14,6 +15,8 @@ export default function Home() {
   });
 
   const posts = allPosts.slice(0, 3);
+  const { flags } = useFlags();
+  const showInstants = flagOn(flags, "instants_home_section");
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-16">
@@ -30,7 +33,7 @@ export default function Home() {
       </section>
 
       {/* Live instants */}
-      <InstantsLive />
+      {showInstants && <InstantsLive />}
 
       {/* Divider */}
       <div className="border-t border-stone-300 my-12" />

@@ -8,19 +8,24 @@ import Gallery from './Pages/Gallery';
 import Links from './Pages/Links';
 import Recap from './Pages/Recap';
 import AdminDashboard from './Pages/AdminDashboard';
+import { FlagsProvider } from './lib/flags';
 
+// The blog's admin route stays OUTSIDE FlagsProvider on purpose — it manages
+// the flags themselves. Only the public site is gated by flags.
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Layout currentPageName="Home"><Home /></Layout>} />
-      <Route path="/Blog" element={<Layout currentPageName="Blog"><Blog /></Layout>} />
-      <Route path="/BlogPost" element={<Layout currentPageName="Blog"><BlogPost /></Layout>} />
-      <Route path="/Tags" element={<Layout currentPageName="Tags"><Tags /></Layout>} />
-      <Route path="/Recap" element={<Layout currentPageName="Recap"><Recap /></Layout>} />
-      <Route path="/Gallery" element={<Layout currentPageName="Gallery"><Gallery /></Layout>} />
-      <Route path="/Links" element={<Layout currentPageName="Links"><Links /></Layout>} />
-      <Route path="/admin" element={<AdminDashboard />} />
-    </Routes>
+    <FlagsProvider>
+      <Routes>
+        <Route path="/" element={<Layout currentPageName="Home"><Home /></Layout>} />
+        <Route path="/Blog" element={<Layout currentPageName="Blog"><Blog /></Layout>} />
+        <Route path="/BlogPost" element={<Layout currentPageName="Blog"><BlogPost /></Layout>} />
+        <Route path="/Tags" element={<Layout currentPageName="Tags"><Tags /></Layout>} />
+        <Route path="/Recap" element={<Layout currentPageName="Recap"><Recap /></Layout>} />
+        <Route path="/Gallery" element={<Layout currentPageName="Gallery"><Gallery /></Layout>} />
+        <Route path="/Links" element={<Layout currentPageName="Links"><Links /></Layout>} />
+        <Route path="/admin" element={<AdminDashboard />} />
+      </Routes>
+    </FlagsProvider>
   );
 }
 

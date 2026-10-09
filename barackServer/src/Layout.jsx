@@ -4,7 +4,8 @@ import { createPageUrl } from "./lib/utils";
 import ThemeCustomizer from "./components/settings/ThemeCustomizer";
 import DesignPresets from "./components/settings/DesignPresets";
 import InstantsWidget from "./components/instants/InstantsWidget";
-import { Menu, X } from "lucide-react";
+import { useFlags, flagOn } from "./lib/flags";
+import { Menu, X, Sparkles } from "lucide-react";
 
 const NAV_LINKS = [
   { label: "home", page: "Home" },
@@ -16,6 +17,11 @@ const NAV_LINKS = [
 
 export default function Layout({ children, currentPageName }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { flags, newUi, setNewUi } = useFlags();
+  const showWidget = flagOn(flags, "instants_widget");
+  // Version preview pill: shows while the visitor has opted in to new-UI
+  // previews (?new-ui=1) so they can flip back with one tap.
+  const showPreviewToggle = newUi && !!flags;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-color, #FAF3E8)', color: 'var(--text-color, #292524)' }}>
@@ -104,8 +110,25 @@ export default function Layout({ children, currentPageName }) {
         {children}
       </main>
 
-      {/* Locket-style realtime capture feed — floats on every page */}
-      <InstantsWidget />
+      {/* Locket-style realtime capture feed — floats on every page (flag-gated) */}
+      {showWidget && <InstantsWidget />}
+
+      {/* "Trying the new version" pill — tap to return to classic */}
+      {showPreviewToggle && (
+        <button
+          onClick={() => setNewUi(false)}
+          className="fixed bottom-4 left-4 z-50 font-body text-[11px] px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm transition-opacity hover:opacity-80"
+          style={{
+            backgroundColor: 'var(--text-color, #292524)' + '10',
+            color: 'var(--text-color, #292524)',
+            border: '1px solid ' + 'var(--text-color, #292524)' + '18',
+          }}
+        >
+          <Sparkles className="w-3 h-3" style={{ color: 'var(--accent-color, #78716c)' }} />
+          trying the new version
+          <span className="underline opacity-60">back to classic</span>
+        </button>
+      )}
       
       <footer className="border-t mt-20" style={{ borderColor: 'var(--text-color, #292524)' + '20' }}>
         <div className="max-w-3xl mx-auto px-6 py-8">
