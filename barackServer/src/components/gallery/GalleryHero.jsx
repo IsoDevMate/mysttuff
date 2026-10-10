@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight, Play } from "lucide-react";
+import { Play } from "lucide-react";
 
 /**
  * A manually browsed story cover for the Gallery. Visitors choose a frame and
@@ -32,13 +32,12 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
   const next = useCallback(() => goTo(active + 1, 1), [active, goTo]);
   const prev = useCallback(() => goTo(active - 1, -1), [active, goTo]);
 
+  // Autoplay — resets on every slide change so each slide gets a full interval
   useEffect(() => {
-    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => setReducedMotion(query.matches);
-    update();
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
-  }, []);
+    if (slides.length <= 1) return;
+    const t = setTimeout(() => next(), 5000);
+    return () => clearTimeout(t);
+  }, [active, next, slides.length]);
 
   if (!slides.length) return null;
   const slide = slides[active];
@@ -188,28 +187,6 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
         </div>
       </div>
 
-      {slides.length > 1 && (
-        <div className="absolute bottom-24 right-6 sm:right-10 z-20 flex gap-2">
-          <button
-            type="button"
-            onClick={prev}
-            aria-label="Previous gallery story"
-            className="h-11 w-11 rounded-full border flex items-center justify-center text-white transition-colors hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
-            style={{ borderColor: "rgba(240,235,227,0.4)", backgroundColor: "rgba(12,10,9,0.4)" }}
-          >
-            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={next}
-            aria-label="Next gallery story"
-            className="h-11 w-11 rounded-full border flex items-center justify-center text-white transition-colors hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
-            style={{ borderColor: "rgba(240,235,227,0.4)", backgroundColor: "rgba(12,10,9,0.4)" }}
-          >
-            <ChevronRight className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </div>
-      )}
     </section>
   );
 }
