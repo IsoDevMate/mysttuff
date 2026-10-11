@@ -40,6 +40,19 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
     return () => clearTimeout(t);
   }, [active, next, slides.length]);
 
+  // The hero is the first thing a visitor sees, so warm the next slide while
+  // the current one is on screen. Advancing then lands instantly instead of
+  // waiting on a fresh download. The visible shot itself is marked high
+  // priority in the markup below.
+  useEffect(() => {
+    if (slides.length < 2) return;
+    const upcoming = slides[(active + 1) % slides.length];
+    if (!upcoming?.src) return;
+    const img = new Image();
+    img.decoding = "async";
+    img.src = upcoming.src;
+  }, [active, slides]);
+
   if (!slides.length) return null;
   const slide = slides[active];
 
@@ -72,6 +85,9 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
             src={slide.src}
             alt={slide.title}
             draggable={false}
+            fetchPriority="high"
+            loading="eager"
+            decoding="async"
             className="h-full w-full object-cover object-center select-none"
           />
         </motion.div>
@@ -181,6 +197,9 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
                 src={s.src}
                 alt=""
                 draggable={false}
+                loading="lazy"
+                fetchPriority="low"
+                decoding="async"
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
               />
             </button>

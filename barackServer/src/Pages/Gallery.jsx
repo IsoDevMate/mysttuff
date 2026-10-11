@@ -194,6 +194,8 @@ export default function Gallery() {
                                 src={media.url}
                                 alt={item.title}
                                 loading="lazy"
+                                fetchPriority="low"
+                                decoding="async"
                                 draggable={false}
                                 className="w-full h-full object-cover transition-transform duration-300 group-hover/tile:scale-105"
                               />
@@ -253,6 +255,8 @@ export default function Gallery() {
                           src={media.url}
                           alt={item.title}
                           loading="lazy"
+                          fetchPriority="low"
+                          decoding="async"
                           draggable={false}
                           className="w-full h-full object-cover transition-transform duration-300 group-hover/gcell:scale-105"
                         />

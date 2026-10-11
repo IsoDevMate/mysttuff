@@ -569,6 +569,15 @@ const ArticleEditor = () => {
             toast.error('Title is required');
             return;
         }
+        // Taking a live article offline also strands any hot take that links to
+        // it — readers can only open published articles, so those links stop
+        // rendering. Confirm before that happens.
+        if (!publish && (current.published === 1 || current.published === true)) {
+            const ok = window.confirm(
+                'This article is live.\n\nSaving as a draft takes it offline, and any hot take linking to it will stop showing a link to readers.\n\nTake it offline anyway?'
+            );
+            if (!ok) return;
+        }
         clearTimeout(autosaveTimerRef.current);
         try {
             setLoading(true);
