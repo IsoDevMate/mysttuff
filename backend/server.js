@@ -222,9 +222,20 @@ app.get('/api/social-links', async (req, res) => {
   }
 });
 
+// article_live tells the client whether the linked article is actually readable
+// on the site. A take may point at a draft, and a draft 404s for readers, so the
+// UI must not render a link for it.
+const ARTICLE_LIVE_SQL = `EXISTS (
+  SELECT 1 FROM articles a
+  WHERE LOWER(TRIM(a.slug)) = LOWER(TRIM(h.article_slug))
+    AND a.published = 1
+) AS article_live`;
+
 app.get('/api/hot-takes', async (req, res) => {
   try {
-    const result = await db.execute('SELECT * FROM hot_takes WHERE published = 1 ORDER BY created_at DESC');
+    const result = await db.execute(
+      `SELECT h.*, ${ARTICLE_LIVE_SQL} FROM hot_takes h WHERE h.published = 1 ORDER BY h.created_at DESC`
+    );
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -237,12 +248,12 @@ app.get('/api/hot-takes', async (req, res) => {
 app.get('/api/articles/:slug/hot-takes', async (req, res) => {
   try {
     const result = await db.execute({
-      sql: `SELECT * FROM hot_takes
-            WHERE published = 1
-              AND article_slug IS NOT NULL
-              AND TRIM(article_slug) <> ''
-              AND LOWER(TRIM(article_slug)) = LOWER(?)
-            ORDER BY created_at DESC`,
+      sql: `SELECT h.*, ${ARTICLE_LIVE_SQL} FROM hot_takes h
+            WHERE h.published = 1
+              AND h.article_slug IS NOT NULL
+              AND TRIM(h.article_slug) <> ''
+              AND LOWER(TRIM(h.article_slug)) = LOWER(?)
+            ORDER BY h.created_at DESC`,
       args: [req.params.slug || ''],
     });
     res.json(result.rows);

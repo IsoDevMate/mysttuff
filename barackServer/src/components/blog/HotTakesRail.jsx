@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { blogAPI } from "@/api/blogAPI";
+import { takeLink } from "@/lib/hotTakes";
 import { Flame, ArrowRight } from "lucide-react";
 
 /**
@@ -28,13 +29,14 @@ export default function HotTakesRail() {
 
       <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
         {takes.map((take) => {
+          const slug = takeLink(take);
           const inner = (
             <>
               <p className="font-serif-display text-lg leading-snug mb-3 flex-1">
                 “{take.take}”
               </p>
               <span className="font-body text-xs opacity-50 flex items-center gap-1 mt-auto">
-                {take.article_slug ? (
+                {slug ? (
                   <>
                     read the take <ArrowRight className="w-3 h-3" />
                   </>
@@ -52,8 +54,8 @@ export default function HotTakesRail() {
               backgroundColor: "var(--text-color, #292524)" + "05",
             };
 
-          return take.article_slug ? (
-            <Link key={take.id} to={createPageUrl(`BlogPost?slug=${take.article_slug}`)} className={cardClass} style={style}>
+          return slug ? (
+            <Link key={take.id} to={createPageUrl(`BlogPost?slug=${encodeURIComponent(slug)}`)} className={cardClass} style={style}>
               {inner}
             </Link>
           ) : (

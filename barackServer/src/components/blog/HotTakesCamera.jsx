@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { blogAPI } from "@/api/blogAPI";
+import { takeLink } from "@/lib/hotTakes";
 import { createPageUrl } from "@/lib/utils";
 import { Flame, Camera, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 
@@ -52,6 +53,8 @@ export default function HotTakesCamera({ slug }) {
 
   if (!count) return null;
   const take = mine[Math.min(index, count - 1)];
+  // Only link out when the linked article is actually readable on the site.
+  const linkSlug = takeLink(take);
 
   const arrow = (dir, Icon, label) =>
     count > 1 && (
@@ -92,7 +95,7 @@ export default function HotTakesCamera({ slug }) {
             <Camera className="w-3 h-3" /> take {String(index + 1).padStart(2, "0")}
           </p>
           <span className="ml-auto font-body text-[10px] text-zinc-500">
-            {take.article_slug ? "linked to this article" : "hot off the press"}
+            {linkSlug ? "linked to this article" : "hot off the press"}
           </span>
         </div>
 
@@ -164,9 +167,9 @@ export default function HotTakesCamera({ slug }) {
         )}
 
         {/* Read the take */}
-        {take.article_slug && (
+        {linkSlug && (
           <Link
-            to={createPageUrl(`BlogPost?slug=${take.article_slug}`)}
+            to={createPageUrl(`BlogPost?slug=${encodeURIComponent(linkSlug)}`)}
             className="flex items-center justify-center gap-1.5 px-4 py-3 font-body text-xs text-zinc-300 hover:text-white border-t transition-colors"
             style={{ borderColor: "rgba(255,255,255,0.07)" }}
           >

@@ -114,6 +114,7 @@ const HotTakes = () => {
 
       <p className="text-sm text-muted-foreground">
         Short takes appear on the public writing page. Link a take to an article to send readers straight to the full piece.
+        Only published articles are readable on the site — a take linked to a draft shows no link to readers.
       </p>
 
       {showAdd && (
@@ -143,7 +144,7 @@ const HotTakes = () => {
                 <option value="">— no link —</option>
                 {articles.map((a) => (
                   <option key={a.id} value={a.slug}>
-                    {a.title}
+                    {a.title}{a.published === 1 || a.published === true ? '' : ' (draft)'}
                   </option>
                 ))}
               </select>
@@ -209,9 +210,20 @@ const HotTakes = () => {
                     )}
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mt-3 min-w-0">
                       {take.article_slug ? (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Link2 className="h-3 w-3" /> → {take.article_slug}
-                        </span>
+                        (() => {
+                          const linked = articles.find((a) => a.slug === take.article_slug);
+                          const isDraft = linked && !(linked.published === 1 || linked.published === true);
+                          return (
+                            <span
+                              className={`text-xs flex items-center gap-1 ${
+                                isDraft ? 'text-amber-600' : 'text-muted-foreground'
+                              }`}
+                            >
+                              <Link2 className="h-3 w-3" /> → {take.article_slug}
+                              {isDraft && <span className="font-medium">· draft, readers can't open it</span>}
+                            </span>
+                          );
+                        })()
                       ) : (
                         <span className="text-xs text-muted-foreground/60">not linked</span>
                       )}
@@ -223,7 +235,7 @@ const HotTakes = () => {
                         <option value="">— no link —</option>
                         {articles.map((a) => (
                           <option key={a.id} value={a.slug}>
-                            {a.title.slice(0, 50)}
+                            {a.title.slice(0, 50)}{a.published === 1 || a.published === true ? '' : ' (draft)'}
                           </option>
                         ))}
                       </select>

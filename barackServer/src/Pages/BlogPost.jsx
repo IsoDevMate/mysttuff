@@ -104,6 +104,31 @@ export default function BlogPost() {
     return () => obs.disconnect();
   });
 
+  // Reading progress for the article body — the bar fills as the piece is read
+  // and sits just under the fixed nav. Cheap scroll read, passive listener.
+  const articleElRef = useRef(null);
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    const onScroll = () => {
+      const el = articleElRef.current;
+      if (!el) return;
+      const top = window.scrollY + el.getBoundingClientRect().top;
+      const total = el.offsetHeight - window.innerHeight;
+      if (total <= 0) {
+        setProgress(el.getBoundingClientRect().top <= 0 ? 1 : 0);
+        return;
+      }
+      setProgress(Math.min(1, Math.max(0, (window.scrollY - top) / total)));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [post]);
+
   const scrollTo = (e, id) => {
     e.preventDefault();
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
@@ -161,6 +186,21 @@ export default function BlogPost() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-16">
+      {/* Reading progress — a quiet line under the nav that fills as you read */}
+      <div
+        role="progressbar"
+        aria-label="Reading progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(progress * 100)}
+        className="fixed top-20 left-0 right-0 h-[3px] z-40 pointer-events-none"
+      >
+        <div
+          className="h-full transition-[width] duration-150 ease-out motion-reduce:transition-none"
+          style={{ width: `${progress * 100}%`, backgroundColor: "var(--accent-color, #78716c)" }}
+        />
+      </div>
+
       <div className="flex gap-12 relative">
         {/* Main Content */}
         <div className="flex-1 max-w-3xl">
@@ -233,7 +273,7 @@ export default function BlogPost() {
           )}
 
           {/* Content */}
-          <article className="font-body leading-relaxed prose-styles">
+          <article ref={articleElRef} className="font-body leading-relaxed prose-styles">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
