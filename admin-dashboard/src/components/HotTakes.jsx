@@ -98,6 +98,11 @@ const HotTakes = () => {
     }
   };
 
+  const isPublished = (a) => a.published === 1 || a.published === true;
+  // Only published articles are readable on the site, so only those can be
+  // chosen as a take's link.
+  const publishedArticles = articles.filter(isPublished);
+
   if (loading) return <div aria-label="Loading hot takes" className="space-y-4 animate-pulse p-2"><div className="h-10 w-48 rounded bg-muted" />{[1, 2, 3].map((item) => <div key={item} className="h-24 rounded-xl bg-muted" />)}</div>;
 
   return (
@@ -114,7 +119,7 @@ const HotTakes = () => {
 
       <p className="text-sm text-muted-foreground">
         Short takes appear on the public writing page. Link a take to an article to send readers straight to the full piece.
-        Only published articles are readable on the site — a take linked to a draft shows no link to readers.
+        Only published articles can be linked — a draft isn't readable on the site.
       </p>
 
       {showAdd && (
@@ -142,9 +147,9 @@ const HotTakes = () => {
                 className="w-full min-h-11 border border-input rounded-md bg-background text-base sm:text-sm px-3"
               >
                 <option value="">— no link —</option>
-                {articles.map((a) => (
+                {publishedArticles.map((a) => (
                   <option key={a.id} value={a.slug}>
-                    {a.title}{a.published === 1 || a.published === true ? '' : ' (draft)'}
+                    {a.title}
                   </option>
                 ))}
               </select>
@@ -233,11 +238,19 @@ const HotTakes = () => {
                         className="min-h-11 max-w-full min-w-0 text-sm border border-input rounded-md px-2.5 bg-background"
                       >
                         <option value="">— no link —</option>
-                        {articles.map((a) => (
+                        {publishedArticles.map((a) => (
                           <option key={a.id} value={a.slug}>
-                            {a.title.slice(0, 50)}{a.published === 1 || a.published === true ? '' : ' (draft)'}
+                            {a.title.slice(0, 50)}
                           </option>
                         ))}
+                        {/* A take linked before this rule existed keeps showing its
+                            current target so the value is never silently blank. */}
+                        {take.article_slug &&
+                          !publishedArticles.some((a) => a.slug === take.article_slug) && (
+                            <option value={take.article_slug} disabled>
+                              {(articles.find((a) => a.slug === take.article_slug)?.title || take.article_slug).slice(0, 50)} (draft — not readable)
+                            </option>
+                          )}
                       </select>
                       <label className="min-h-11 flex items-center gap-2 text-sm cursor-pointer">
                         <input
