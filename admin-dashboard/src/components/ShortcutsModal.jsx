@@ -8,8 +8,9 @@ const GROUPS = [
   {
     label: 'Document',
     shortcuts: [
-      { keys: [`${MOD}`, 'S'], action: 'Save draft (stays on page)' },
+      { keys: [`${MOD}`, 'S'], action: 'Save as draft (takes it offline)' },
       { keys: [`${MOD}`, '⇧', 'S'], action: 'Publish / update' },
+      { keys: [`${MOD}`, 'F'], action: 'Find & replace in the editor' },
       { keys: [`${MOD}`, '/'], action: 'Toggle this cheat sheet' },
     ],
   },

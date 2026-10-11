@@ -41,6 +41,10 @@ class BlogAPI {
     return this.request('/hot-takes');
   }
 
+  async getHotTakesForArticle(slug) {
+    return this.request(`/articles/${encodeURIComponent(slug)}/hot-takes`);
+  }
+
   async getInstants(limit = 50) {
     return this.request(`/instants?limit=${limit}`);
   }

@@ -6,6 +6,7 @@ import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Save, ArrowLeft, Eye, EyeOff, Upload, Columns, X, Keyboard, ListTree, Cloud, Check, CloudOff, Loader2, Link2, Plus } from 'lucide-react';
 import MarkdownToolbar from './MarkdownToolbar';
+import FindReplaceBar from './FindReplaceBar';
 import { MarkdownPreview } from './MarkdownPreview';
 import ImageUpload from './ImageUpload';
 import ImageOrganizer from './ImageOrganizer';
@@ -26,6 +27,12 @@ const parseTags = (raw) => {
         return String(raw).split(',').map(s => s.trim()).filter(Boolean);
     }
 };
+
+// Fields that count as "real" edits when deciding whether to offer crash
+// recovery. Server bookkeeping (id, created_at, updated_at) changes on its own
+// and must not trigger a restore prompt.
+const COMPARE_FIELDS = ['title', 'slug', 'content', 'excerpt', 'category', 'published', 'image_url', 'tags', 'show_toc'];
+const comparable = (a) => JSON.stringify(COMPARE_FIELDS.map((f) => a?.[f] ?? null));
 
 // Normalize a tag entry to { name, url? } — accepts strings or objects
 const tagEntry = (t) => {
@@ -111,7 +118,13 @@ const ArticleEditor = () => {
     const [viewMode, setViewMode] = useState('edit'); // 'edit' | 'preview' | 'split'
     const contentRef = useRef(null);
     const imageUploadRef = useRef(null);
+    const findBarRef = useRef(null);
     const [showShortcuts, setShowShortcuts] = useState(false);
+    const [findOpen, setFindOpen] = useState(false);
+    // Browser spellcheck / autocorrect in the editor — off is handy while writing code.
+    const [spellCheck, setSpellCheck] = useState(() => {
+        try { return localStorage.getItem('editorSpellCheck') !== '0'; } catch { return true; }
+    });
     const [tagInput, setTagInput] = useState('');
     // autosave state machine: 'idle' | 'saving' | 'saved' | 'error'
     const [saveStatus, setSaveStatus] = useState('idle');
@@ -131,6 +144,11 @@ const ArticleEditor = () => {
             return next;
         });
     };
+
+    // Persist the spellcheck / autocorrect preference across sessions.
+    useEffect(() => {
+        try { localStorage.setItem('editorSpellCheck', spellCheck ? '1' : '0'); } catch { /* storage optional */ }
+    }, [spellCheck]);
 
     // Instant crash-safety: snapshot to localStorage on every change (before any
     // debounced server save). This is what survives a power cut mid-sentence.
@@ -211,6 +229,28 @@ const ArticleEditor = () => {
         }
     }, [draftKey]);
 
+    // Latest autosave fn, so the unload flush below always calls the current one.
+    const autosaveRef = useRef(null);
+    useEffect(() => { autosaveRef.current = autosaveToServer; }, [autosaveToServer]);
+
+    // Flush any pending server autosave the moment the tab is hidden or closed,
+    // so the server draft is never left behind the newest keystrokes. Without
+    // this the 2s debounce could be pending when the browser closes, leaving the
+    // server copy stale and triggering an unnecessary restore prompt on return.
+    useEffect(() => {
+        const flush = () => {
+            if (document.visibilityState === 'visible') return;
+            clearTimeout(autosaveTimerRef.current);
+            autosaveRef.current?.();
+        };
+        document.addEventListener('visibilitychange', flush);
+        window.addEventListener('pagehide', flush);
+        return () => {
+            document.removeEventListener('visibilitychange', flush);
+            window.removeEventListener('pagehide', flush);
+        };
+    }, []);
+
     // Warn before leaving with unsaved server changes (localStorage snapshot still protects data)
     useEffect(() => {
         const onBeforeUnload = (e) => {
@@ -266,7 +306,9 @@ const ArticleEditor = () => {
                 if (raw) {
                     const snap = JSON.parse(raw);
                     const serverTime = foundArticle?.updated_at ? new Date(foundArticle.updated_at + 'Z').getTime() : 0;
-                    const differs = JSON.stringify({ ...snap, savedAt: undefined }) !== JSON.stringify({ ...base, savedAt: undefined });
+                    // Only offer recovery when the actual writing differs — not
+                    // because of an id/timestamp that moved on its own.
+                    const differs = comparable(snap) !== comparable(base);
                     if (snap.savedAt && snap.savedAt > serverTime + 1000 && differs) recovered = snap;
                 }
             } catch { /* corrupt snapshot — ignore */ }
@@ -438,8 +480,18 @@ const ArticleEditor = () => {
 
     const handleEditorKeyDown = (e) => {
         const mod = e.metaKey || e.ctrlKey;
-        if (!mod) return;
+        if (!mod) {
+            // While find & replace is open, Enter steps matches instead of
+            // inserting a newline.
+            if (findOpen && e.key === 'Enter') {
+                e.preventDefault();
+                if (e.shiftKey) findBarRef.current?.prev();
+                else findBarRef.current?.next();
+            }
+            return;
+        }
         const key = e.key.toLowerCase();
+        if (key === 'f' || key === 'h') { e.preventDefault(); setFindOpen(true); return; }
         if (key === 'b') { e.preventDefault(); applyEdit(el => wrapSelection(el, '**', '**', 'bold text')); }
         else if (key === 'i') { e.preventDefault(); applyEdit(el => wrapSelection(el, '_', '_', 'italic text')); }
         else if (key === 'k') { e.preventDefault(); applyEdit(el => wrapSelection(el, '[', '](https://)', 'link text')); }
@@ -523,18 +575,19 @@ const ArticleEditor = () => {
             const articleData = { ...current, published: publish };
             const articleId = (id && id !== 'new') ? id : current.id;
             if (articleId) {
-                const updated = await api.updateArticle(articleId, articleData);
-                serverSavedRef.current = current;
-                setSaveStatus('saved');
-                setLastSavedAt(Date.now());
-                toast.success(publish ? 'Article published' : 'Draft saved');
-                if (updated?.id && updated.id !== articleId) {
+                const updated = await api.updateArticle(articleId, articleData);                        serverSavedRef.current = articleData;
+                        setArticle(prev => ({ ...prev, published: publish }));
+                        setSaveStatus('saved');
+                        setLastSavedAt(Date.now());
+                        toast.success(publish ? 'Article published' : 'Draft saved');
+                        if (updated?.id && updated.id !== articleId) {
                     window.history.replaceState(null, '', `/articles/${updated.id}`);
                 }
                 // Keep the editor open — no navigation on save
             } else {
                 const created = await api.createArticle(articleData);
-                serverSavedRef.current = current;
+                serverSavedRef.current = articleData;
+                setArticle(prev => ({ ...prev, published: publish }));
                 setSaveStatus('saved');
                 setLastSavedAt(Date.now());
                 toast.success(publish ? 'Article published' : 'Draft saved');
@@ -653,9 +706,10 @@ const ArticleEditor = () => {
                         variant="outline"
                         onClick={() => handleSave(false)}
                         disabled={loading}
+                        title={article.published ? 'Saves and takes this article offline' : 'Saves without publishing'}
                     >
                         <Save className="mr-2 h-4 w-4" />
-                        Save Draft
+                        {article.published ? 'Save & unpublish' : 'Save draft'}
                     </Button>
                     <Button
                         onClick={() => handleSave(true)}
@@ -717,6 +771,9 @@ const ArticleEditor = () => {
                                     <textarea
                                         id="excerpt"
                                         value={article.excerpt}
+                                        spellCheck={spellCheck}
+                                        autoCorrect={spellCheck ? 'on' : 'off'}
+                                        autoCapitalize="sentences"
                                         onChange={(e) => setArticle(prev => ({ ...prev, excerpt: e.target.value }))}
                                         placeholder="Brief description..."
                                         className="w-full p-3 border rounded-lg h-16 resize-none bg-background text-foreground text-sm"
@@ -738,11 +795,27 @@ const ArticleEditor = () => {
                                         canUndo={contentHistoryRef.current.index > 0}
                                         canRedo={contentHistoryRef.current.index < contentHistoryRef.current.stack.length - 1}
                                         onImageClick={() => imageUploadRef.current?.openPicker()}
+                                        findOpen={findOpen}
+                                        onFindClick={() => setFindOpen(v => !v)}
+                                        spellCheck={spellCheck}
+                                        onToggleSpellCheck={() => setSpellCheck(v => !v)}
                                     />
+                                    {findOpen && (
+                                        <FindReplaceBar
+                                            ref={findBarRef}
+                                            content={article.content}
+                                            textareaRef={contentRef}
+                                            onContentChange={handleContentChange}
+                                            onClose={() => { setFindOpen(false); contentRef.current?.focus(); }}
+                                        />
+                                    )}
                                     <textarea
                                         ref={contentRef}
                                         id="content"
                                         value={article.content}
+                                        spellCheck={spellCheck}
+                                        autoCorrect={spellCheck ? 'on' : 'off'}
+                                        autoCapitalize="sentences"
                                         onChange={(e) => handleContentChange(e.target.value)}
                                         onKeyDown={(e) => {
                                             if (handleUndoKeys(e)) return;

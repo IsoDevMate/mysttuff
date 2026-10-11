@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
-import { parseTagEntries, tagHref } from "@/lib/tags";
+import { parseTagEntries, parseTags, tagHref } from "@/lib/tags";
 import { blogAPI } from "@/api/blogAPI";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";

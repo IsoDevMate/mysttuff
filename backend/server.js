@@ -231,6 +231,26 @@ app.get('/api/hot-takes', async (req, res) => {
   }
 });
 
+// Hot takes for one article — only the takes tied to this slug, newest first.
+// Lets the article page fetch just its own takes instead of every take on the
+// site. Returns [] (not 404) for a slug nobody has written a take about.
+app.get('/api/articles/:slug/hot-takes', async (req, res) => {
+  try {
+    const result = await db.execute({
+      sql: `SELECT * FROM hot_takes
+            WHERE published = 1
+              AND article_slug IS NOT NULL
+              AND TRIM(article_slug) <> ''
+              AND LOWER(TRIM(article_slug)) = LOWER(?)
+            ORDER BY created_at DESC`,
+      args: [req.params.slug || ''],
+    });
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ─── Comments (Public read, public write) ───────────────────────────────────
 
 app.get('/api/articles/:id/comments', async (req, res) => {

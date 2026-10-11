@@ -3,7 +3,7 @@ import {
   Heading1, Heading2, Heading3, Heading4,
   Bold, Italic, Strikethrough, Quote, Code, Code2,
   Link, Image, Table, Minus, List, ListOrdered,
-  Undo2, Redo2,
+  Undo2, Redo2, Search, SpellCheck,
 } from 'lucide-react';
 import { MARKDOWN_SNIPPETS, applySnippet, toggleList } from '../utils/markdownEditor';
 
@@ -55,7 +55,10 @@ function ToolbarButton({ icon: Icon, title, onClick, active, disabled }) {
   );
 }
 
-export default function MarkdownToolbar({ textareaRef, onContentChange, onImageClick, onUndo, onRedo, canUndo, canRedo }) {
+export default function MarkdownToolbar({
+  textareaRef, onContentChange, onImageClick, onUndo, onRedo, canUndo, canRedo,
+  findOpen, onFindClick, spellCheck, onToggleSpellCheck,
+}) {
   const [codeLang, setCodeLang] = useState('javascript');
 
   const apply = (snippet) => {
@@ -167,6 +170,22 @@ export default function MarkdownToolbar({ textareaRef, onContentChange, onImageC
         </select>
         <ToolbarButton icon={Code2} title="Insert code block" onClick={insertCodeBlock} />
         <div className="flex-1" />
+        {onFindClick && (
+          <ToolbarButton
+            icon={Search}
+            title="Find & replace (Ctrl+F)"
+            onClick={onFindClick}
+            active={findOpen}
+          />
+        )}
+        {onToggleSpellCheck && (
+          <ToolbarButton
+            icon={SpellCheck}
+            title={spellCheck ? 'Spellcheck & autocorrect on — click to turn off' : 'Spellcheck & autocorrect off — click to turn on'}
+            onClick={onToggleSpellCheck}
+            active={spellCheck}
+          />
+        )}
         <ToolbarButton
           icon={Image}
           title="Insert image (upload & crop)"

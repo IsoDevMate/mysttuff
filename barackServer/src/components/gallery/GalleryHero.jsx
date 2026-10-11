@@ -3,8 +3,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Play } from "lucide-react";
 
 /**
- * A manually browsed story cover for the Gallery. Visitors choose a frame and
- * move through it at their own pace; normal page scrolling stays untouched.
+ * An auto-advancing story cover for the Gallery. Slides move on every few
+ * seconds and visitors can pick a frame or step through at their own pace;
+ * normal page scrolling stays untouched.
  */
 const EASE = [0.22, 1, 0.36, 1];
 
@@ -45,7 +46,7 @@ export default function GalleryHero({ slides, onOpenItem, onExplore }) {
   return (
     <section
       aria-label="Featured gallery stories"
-      className="relative min-h-[min(780px,calc(100svh-5rem))] h-[min(780px,calc(100svh-5rem))] w-full overflow-hidden -mt-20"
+      className="relative h-[100svh] min-h-[560px] w-full overflow-hidden -mt-20"
       style={{ backgroundColor: "#0c0a09" }}
     >
       <style>{`

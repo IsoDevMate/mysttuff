@@ -12,6 +12,7 @@ import CommentSection from "@/components/blog/CommentSection";
 import LikeButton from "@/components/blog/LikeButton";
 import ShareButtons from "@/components/blog/ShareButtons";
 import RelatedPosts from "@/components/blog/RelatedPosts";
+import HotTakesCamera from "@/components/blog/HotTakesCamera";
 import InstantsStrip from "@/components/instants/InstantsStrip";
 import { useFlags, flagOn } from "@/lib/flags";
 
@@ -348,6 +349,9 @@ export default function BlogPost() {
               {post.content}
             </ReactMarkdown>
           </article>
+
+          {/* Hot Takes for this article — interactive camera widget (hidden when none) */}
+          {slug && <HotTakesCamera slug={slug} />}
 
           {/* Related Posts */}
           <RelatedPosts currentPostId={post.id} category={post.category} />
