@@ -39,6 +39,18 @@ const chunkText = (text, maxLen = 220) => {
 
 const RATES = [0.75, 1, 1.25, 1.5];
 
+// Prefer a usable English voice: browser default first, then en-US, then any en.
+const pickVoice = (voices) => {
+  if (!voices || !voices.length) return null;
+  return (
+    voices.find((v) => v.default && v.lang && v.lang.toLowerCase().startsWith("en")) ||
+    voices.find((v) => v.default) ||
+    voices.find((v) => v.lang && v.lang.toLowerCase() === "en-us") ||
+    voices.find((v) => v.lang && v.lang.toLowerCase().startsWith("en")) ||
+    voices[0]
+  );
+};
+
 export default function ListenToArticle({ title = "", content = "" }) {
   const supported =
     typeof window !== "undefined" && "speechSynthesis" in window;
@@ -50,68 +62,247 @@ export default function ListenToArticle({ title = "", content = "" }) {
   const [playing, setPlaying] = useState(false);
   const [chunkIndex, setChunkIndex] = useState(0);
   const [rate, setRate] = useState(1);
+  const [voicesReady, setVoicesReady] = useState(false);
+  const [error, setError] = useState("");
   const indexRef = useRef(0);
   const rateRef = useRef(rate);
+  const playingRef = useRef(false);
+  const pausedRef = useRef(false);
+  const voiceRef = useRef(null);
+  const chunksRef = useRef(chunks);
   rateRef.current = rate;
+  chunksRef.current = chunks;
+  playingRef.current = playing;
+
+  // Voices load async in most browsers — wait for them and pin one, or some
+  // systems speak with no voice at all (silence with no error).
+  useEffect(() => {
+    if (!supported || !open) return;
+    const synth = window.speechSynthesis;
+    const load = () => {
+      const voices = synth.getVoices();
+      if (voices && voices.length) {
+        voiceRef.current = pickVoice(voices);
+        setVoicesReady(true);
+        return true;
+      }
+      return false;
+    };
+    if (load()) return;
+    const onVoices = () => load();
+    synth.addEventListener("voiceschanged", onVoices);
+    // Fallback poll — some browsers never fire voiceschanged.
+    const timer = setInterval(() => {
+      if (load()) clearInterval(timer);
+    }, 500);
+    const timeout = setTimeout(() => clearInterval(timer), 8000);
+    return () => {
+      synth.removeEventListener("voiceschanged", onVoices);
+      clearInterval(timer);
+      clearTimeout(timeout);
+    };
+  }, [supported, open]);
+
+  const speakChunk = (i) => {
+    const synth = window.speechSynthesis;
+    const list = chunksRef.current;
+    if (i >= list.length) {
+      setPlaying(false);
+      pausedRef.current = false;
+      indexRef.current = 0;
+      setChunkIndex(0);
+      return;
+    }
+    try {
+      const utter = new SpeechSynthesisUtterance(list[i]);
+      utter.rate = rateRef.current;
+      utter.volume = 1;
+      utter.pitch = 1;
+      if (voiceRef.current) {
+        utter.voice = voiceRef.current;
+        utter.lang = voiceRef.current.lang;
+      } else {
+        utter.lang = "en-US";
+      }
+      utter.onend = () => {
+        // Ignore the end event from an utterance we cancelled ourselves.
+        if (!playingRef.current || pausedRef.current) return;
+        indexRef.current = i + 1;
+        setChunkIndex(i + 1);
+        speakChunk(i + 1);
+      };
+      utter.onerror = (e) => {
+        // Our own pause/stop calls surface as canceled/interrupted — not real failures.
+        const kind = e && e.error;
+        if (kind === "canceled" || kind === "interrupted") return;
+        setPlaying(false);
+        pausedRef.current = false;
+        setError(
+          kind === "not-allowed"
+            ? "Your browser blocked the audio. Tap Play again to allow it."
+            : "The voice stopped unexpectedly. Tap Play to try again."
+        );
+      };
+      synth.speak(utter);
+    } catch {
+      setPlaying(false);
+      pausedRef.current = false;
+      setError("Reading aloud is not available in this browser.");
+    }
+  };
+
+  // Watchdog: Chrome can go quietly idle mid-queue. If we think we're playing
+  // but nothing is speaking and nothing is paused, re-speak the current chunk.
+  // If the engine paused itself, resume it.
+  useEffect(() => {
+    if (!open || !playing) return;
+    const timer = setInterval(() => {
+      if (!playingRef.current) return;
+      const synth = window.speechSynthesis;
+      try {
+        if (synth.paused) {
+          synth.resume();
+          return;
+        }
+        if (!synth.speaking) {
+          synth.cancel();
+          setTimeout(() => {
+            if (playingRef.current) speakChunk(indexRef.current);
+          }, 100);
+        }
+      } catch {
+        /* watchdog must never break playback */
+      }
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [open, playing]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startFrom = (i) => {
+    const synth = window.speechSynthesis;
+    setError("");
+    pausedRef.current = false;
+    try {
+      synth.cancel();
+    } catch {
+      /* noop */
+    }
+    indexRef.current = i;
+    setChunkIndex(i);
+    setPlaying(true);
+    // cancel() applies async in some browsers — a tick avoids eating the chunk.
+    setTimeout(() => speakChunk(i), 120);
+  };
+
+  const toggle = () => {
+    if (!supported) return;
+    const synth = window.speechSynthesis;
+    if (playing) {
+      // True pause: resume() continues mid-sentence instead of restarting the chunk.
+      pausedRef.current = true;
+      setPlaying(false);
+      try {
+        synth.pause();
+      } catch {
+        try {
+          synth.cancel();
+        } catch {
+          /* noop */
+        }
+      }
+    } else if (pausedRef.current && indexRef.current < chunksRef.current.length) {
+      setError("");
+      pausedRef.current = false;
+      setPlaying(true);
+      try {
+        synth.resume();
+      } catch {
+        startFrom(indexRef.current);
+      }
+      // If resume produced no audio (engine dropped the queue), restart the chunk.
+      setTimeout(() => {
+        try {
+          if (
+            playingRef.current &&
+            !window.speechSynthesis.speaking &&
+            !window.speechSynthesis.paused
+          ) {
+            startFrom(indexRef.current);
+          }
+        } catch {
+          /* noop */
+        }
+      }, 600);
+    } else {
+      const i =
+        indexRef.current >= chunksRef.current.length ? 0 : indexRef.current;
+      startFrom(i);
+    }
+  };
 
   const stop = () => {
+    pausedRef.current = false;
+    setError("");
     if (!supported) return;
-    window.speechSynthesis.cancel();
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      /* noop */
+    }
     setPlaying(false);
     indexRef.current = 0;
     setChunkIndex(0);
   };
 
-  const speakChunk = (i) => {
-    if (!supported) return;
-    if (i >= chunks.length) {
-      setPlaying(false);
-      indexRef.current = 0;
-      setChunkIndex(0);
-      return;
-    }
-    const utter = new SpeechSynthesisUtterance(chunks[i]);
-    utter.rate = rateRef.current;
-    utter.onend = () => {
-      indexRef.current = i + 1;
-      setChunkIndex(i + 1);
-      speakChunk(i + 1);
-    };
-    utter.onerror = () => setPlaying(false);
-    window.speechSynthesis.speak(utter);
+  const changeRate = (r) => {
+    setRate(r);
+    rateRef.current = r;
+    // Apply immediately to what's being read.
+    if (playingRef.current) startFrom(indexRef.current);
   };
 
-  const toggle = () => {
-    if (!supported) return;
-    if (playing) {
-      window.speechSynthesis.cancel();
-      setPlaying(false);
-    } else {
-      // Resume where we paused; a fresh start when finished or never started.
-      window.speechSynthesis.cancel();
-      const i = indexRef.current >= chunks.length ? 0 : indexRef.current;
-      indexRef.current = i;
-      setChunkIndex(i);
-      setPlaying(true);
-      // cancel() is async in some browsers — a tick avoids eating chunk one.
-      setTimeout(() => speakChunk(i), 50);
-    }
-  };
-
-  // Stop speech when leaving the page or unmounting so audio never leaks.
+  // Stop speech when the player closes, the page unmounts, or the tab hides.
   useEffect(() => {
     if (!open) return;
+    const onHide = () => {
+      if (document.hidden) {
+        pausedRef.current = true;
+        setPlaying(false);
+        try {
+          window.speechSynthesis.pause();
+        } catch {
+          /* noop */
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", onHide);
     return () => {
-      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      document.removeEventListener("visibilitychange", onHide);
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        /* noop */
+      }
     };
   }, [open]);
 
-  useEffect(() => () => stop(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(
+    () => () => {
+      try {
+        if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      } catch {
+        /* noop */
+      }
+    },
+    []
+  );
 
   if (!supported || chunks.length === 0) return null;
 
-  const done = chunkIndex >= chunks.length;
-  const pct = done ? 100 : Math.round((chunkIndex / Math.max(chunks.length, 1)) * 100);
+  const done = chunkIndex >= chunks.length && !playing && !pausedRef.current;
+  const shownIndex = Math.min(chunkIndex, Math.max(chunks.length - 1, 0));
+  const pct = done
+    ? 100
+    : Math.round((chunkIndex / Math.max(chunks.length, 1)) * 100);
 
   if (!open) {
     return (
@@ -147,7 +338,7 @@ export default function ListenToArticle({ title = "", content = "" }) {
           ) : (
             <Play className="w-4 h-4" aria-hidden="true" />
           )}
-          {playing ? "Pause" : chunkIndex > 0 && !done ? "Resume" : "Play"}
+          {playing ? "Pause" : chunkIndex > 0 ? "Resume" : "Play"}
         </button>
         <button
           type="button"
@@ -169,7 +360,7 @@ export default function ListenToArticle({ title = "", content = "" }) {
             <button
               key={r}
               type="button"
-              onClick={() => setRate(r)}
+              onClick={() => changeRate(r)}
               aria-pressed={rate === r}
               className={`min-h-11 min-w-11 px-2 rounded-full font-body text-xs border ${
                 rate === r ? "font-semibold" : "opacity-60"
@@ -215,14 +406,17 @@ export default function ListenToArticle({ title = "", content = "" }) {
           }}
         />
       </div>
-      <p className="mt-2 font-body text-xs opacity-50">
-        {done
-          ? "Finished. Press Play to listen again."
-          : playing
-            ? `Reading part ${Math.min(chunkIndex + 1, chunks.length)} of ${chunks.length}…`
-            : chunkIndex > 0
-              ? `Paused at part ${chunkIndex + 1} of ${chunks.length}.`
-              : `About a ${chunks.length}-part listen. Read aloud by your browser, no download needed.`}
+      <p className="mt-2 font-body text-xs opacity-50" role="status">
+        {error ||
+          (done
+            ? "Finished. Press Play to listen again."
+            : playing
+              ? `Reading part ${shownIndex + 1} of ${chunks.length}…`
+              : chunkIndex > 0
+                ? `Paused at part ${shownIndex + 1} of ${chunks.length}.`
+                : voicesReady
+                  ? `About a ${chunks.length}-part listen. Read aloud by your browser, no download needed.`
+                  : "Loading a voice… if this sticks, your browser may have no speech voices installed. Press Play anyway to try.")}
       </p>
     </div>
   );
