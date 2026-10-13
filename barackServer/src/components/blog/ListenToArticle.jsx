@@ -306,16 +306,16 @@ export default function ListenToArticle({ title = "", content = "" }) {
 
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-2 min-h-11 px-4 rounded-full border font-body text-sm transition-opacity hover:opacity-100 opacity-70"
+      <span
+        className="inline-flex items-center gap-2 min-h-11 px-4 rounded-full border font-body text-sm opacity-50 cursor-not-allowed"
         style={{ borderColor: "var(--text-color, #292524)30" }}
-        aria-label="Listen to this article"
+        aria-label="Listen to this article — coming soon"
+        title="Audio playback is coming soon"
       >
         <Headphones className="w-4 h-4" aria-hidden="true" />
         Listen to this article
-      </button>
+        <span className="text-xs uppercase tracking-wider">coming soon</span>
+      </span>
     );
   }
 
