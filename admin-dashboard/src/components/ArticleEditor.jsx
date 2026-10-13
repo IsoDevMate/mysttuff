@@ -31,7 +31,7 @@ const parseTags = (raw) => {
 // Fields that count as "real" edits when deciding whether to offer crash
 // recovery. Server bookkeeping (id, created_at, updated_at) changes on its own
 // and must not trigger a restore prompt.
-const COMPARE_FIELDS = ['title', 'slug', 'content', 'excerpt', 'category', 'published', 'image_url', 'tags', 'show_toc'];
+const COMPARE_FIELDS = ['title', 'slug', 'content', 'excerpt', 'category', 'published', 'image_url', 'tags', 'show_toc', 'show_listen'];
 const comparable = (a) => JSON.stringify(COMPARE_FIELDS.map((f) => a?.[f] ?? null));
 
 // Normalize a tag entry to { name, url? } — accepts strings or objects
@@ -53,7 +53,8 @@ const EMPTY_ARTICLE = {
     published: false,
     image_url: '',
     tags: [],
-    show_toc: true
+    show_toc: true,
+    show_listen: true
 };
 
 // Editable tag chip: name + optional custom URL + remove
@@ -291,10 +292,11 @@ const ArticleEditor = () => {
                     ...foundArticle,
                     tags: parseTags(foundArticle.tags),
                     show_toc: foundArticle.show_toc !== 0 && foundArticle.show_toc !== false,
+                    show_listen: foundArticle.show_listen !== 0 && foundArticle.show_listen !== false,
                 }
                 : {
                     title: '', slug: '', content: '', excerpt: '', category: '',
-                    published: false, image_url: '', tags: [], show_toc: true,
+                    published: false, image_url: '', tags: [], show_toc: true, show_listen: true,
                 };
             serverSavedRef.current = base;
 
@@ -337,6 +339,7 @@ const ArticleEditor = () => {
             ...rest,
             tags: parseTags(rest.tags),
             show_toc: rest.show_toc !== 0 && rest.show_toc !== false,
+            show_listen: rest.show_listen !== 0 && rest.show_listen !== false,
         }));
         setRecoverableDraft(null);
         toast.success('Recovered your unsaved changes');
@@ -981,6 +984,21 @@ const ArticleEditor = () => {
                                             </p>
                                         </div>
                                     </div>
+                                    <div className="flex items-start space-x-2">
+                                        <input
+                                            type="checkbox"
+                                            id="show_listen"
+                                            checked={article.show_listen !== false}
+                                            onChange={(e) => setArticle(prev => ({ ...prev, show_listen: e.target.checked }))}
+                                            className="rounded mt-1"
+                                        />
+                                        <div>
+                                            <Label htmlFor="show_listen">Listen to this article</Label>
+                                            <p className="text-xs text-muted-foreground">
+                                                Shows a listen button so readers can hear the article read aloud. Uncheck to hide it.
+                                            </p>
+                                        </div>
+                                    </div>
                                 </CardContent>
                             </Card>
                         )}
@@ -1028,6 +1046,14 @@ const ArticleEditor = () => {
                                                 onChange={(e) => setArticle(prev => ({ ...prev, show_toc: e.target.checked }))}
                                             />
                                             Auto TOC
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={article.show_listen !== false}
+                                                onChange={(e) => setArticle(prev => ({ ...prev, show_listen: e.target.checked }))}
+                                            />
+                                            Listen
                                         </label>
                                     </div>
                                 </CardContent>

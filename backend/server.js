@@ -367,12 +367,12 @@ app.get('/api/admin/articles', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/admin/articles', authenticateToken, async (req, res) => {
-  const { title, slug, content, excerpt, category, published, image_url, tags, show_toc } = req.body;
+  const { title, slug, content, excerpt, category, published, image_url, tags, show_toc, show_listen } = req.body;
   const id = uuidv4();
   try {
     await db.execute({
-      sql: 'INSERT INTO articles (id, title, slug, content, excerpt, category, published, image_url, tags, show_toc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      args: [id, title, slug, content, excerpt, category, published ? 1 : 0, image_url || null, serializeTags(tags), show_toc ? 1 : 0],
+      sql: 'INSERT INTO articles (id, title, slug, content, excerpt, category, published, image_url, tags, show_toc, show_listen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      args: [id, title, slug, content, excerpt, category, published ? 1 : 0, image_url || null, serializeTags(tags), show_toc ? 1 : 0, show_listen === false || show_listen === 0 ? 0 : 1],
     });
     const result = await db.execute({ sql: 'SELECT * FROM articles WHERE id = ?', args: [id] });
     await auditLog('CREATE', 'article', id, title);
@@ -383,11 +383,11 @@ app.post('/api/admin/articles', authenticateToken, async (req, res) => {
 });
 
 app.put('/api/admin/articles/:id', authenticateToken, async (req, res) => {
-  const { title, slug, content, excerpt, category, published, image_url, tags, show_toc } = req.body;
+  const { title, slug, content, excerpt, category, published, image_url, tags, show_toc, show_listen } = req.body;
   try {
     await db.execute({
-      sql: 'UPDATE articles SET title = ?, slug = ?, content = ?, excerpt = ?, category = ?, published = ?, image_url = ?, tags = ?, show_toc = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      args: [title, slug, content, excerpt, category, published ? 1 : 0, image_url || null, serializeTags(tags), show_toc ? 1 : 0, req.params.id],
+      sql: 'UPDATE articles SET title = ?, slug = ?, content = ?, excerpt = ?, category = ?, published = ?, image_url = ?, tags = ?, show_toc = ?, show_listen = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      args: [title, slug, content, excerpt, category, published ? 1 : 0, image_url || null, serializeTags(tags), show_toc ? 1 : 0, show_listen === false || show_listen === 0 ? 0 : 1, req.params.id],
     });
     const result = await db.execute({ sql: 'SELECT * FROM articles WHERE id = ?', args: [req.params.id] });
     await auditLog('UPDATE', 'article', req.params.id, title, published ? 'published' : 'draft');

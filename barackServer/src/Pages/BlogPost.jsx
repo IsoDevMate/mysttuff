@@ -10,6 +10,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import CommentSection from "@/components/blog/CommentSection";
 import LikeButton from "@/components/blog/LikeButton";
+import ListenToArticle from "@/components/blog/ListenToArticle";
 import ShareButtons from "@/components/blog/ShareButtons";
 import RelatedPosts from "@/components/blog/RelatedPosts";
 import HotTakesCamera from "@/components/blog/HotTakesCamera";
@@ -253,9 +254,12 @@ export default function BlogPost() {
               </div>
             )}
             
-            {/* Like Button */}
-            <div className="flex items-center gap-3">
+            {/* Like Button + Listen */}
+            <div className="flex flex-wrap items-center gap-3">
               <LikeButton postId={post.id} />
+              {post.show_listen !== 0 && post.show_listen !== false && (
+                <ListenToArticle title={post.title} content={post.content} />
+              )}
             </div>
           </header>
 
